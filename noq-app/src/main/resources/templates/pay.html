@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments :: pageHead('Demo payment')}"></head>
+<body>
+<header th:replace="~{fragments :: siteHeader}"></header>
+
+<!-- SIMULATED online payment. No card / UPI / bank details are ever asked for or collected. -->
+<main class="container pay-wrap" th:attr="data-ref=${order.orderReference}">
+    <div class="card pad" style="display:grid;gap:14px">
+        <div class="demo-banner">⚠️ Demo payment gateway - this is a simulation for the college project.
+            No real money is charged. Never enter real card or UPI details here.</div>
+
+        <div style="text-align:center">
+            <div class="muted small">Paying for order</div>
+            <div class="order-ref" th:text="${order.orderReference}">NQ-2026-XXXXX</div>
+            <div class="amount" th:text="|₹${order.totalAmount}|">₹0</div>
+            <span class="pill" data-pay-status th:text="|Payment: ${order.paymentStatus}|">PENDING</span>
+        </div>
+
+        <div th:if="${order.paymentMethod.name() != 'ONLINE'}" class="alert alert-warn">
+            This order is <b>pay at counter</b>. Please pay when you collect your food.
+        </div>
+        <div th:if="${order.paymentStatus.name() == 'PAID'}" class="alert alert-ok">This order is already paid.</div>
+        <div th:if="${order.status.name() == 'CANCELLED'}" class="alert alert-bad">This order was cancelled.</div>
+
+        <div th:if="${order.paymentMethod.name() == 'ONLINE' and order.paymentStatus.name() != 'PAID' and order.status.name() != 'CANCELLED'}"
+             style="display:grid;gap:10px" data-pay-actions>
+            <div class="field hidden" data-otp-field>
+                <label for="otp">Your pickup code (6 digits)</label>
+                <input id="otp" class="input" inputmode="numeric" maxlength="6" pattern="\d{6}" autocomplete="off">
+            </div>
+            <div class="alert hidden" role="status" data-result></div>
+            <button class="btn btn-ok btn-lg btn-block" type="button" data-simulate="true">Simulate successful payment</button>
+            <button class="btn btn-block" type="button" data-simulate="false">Simulate failed payment</button>
+        </div>
+
+        <a class="btn btn-block" th:href="@{/track(ref=${order.orderReference})}">Go to order tracking</a>
+    </div>
+</main>
+
+<footer th:replace="~{fragments :: siteFooter}"></footer>
+<script th:src="@{/js/app.js}"></script>
+<script th:src="@{/js/pay.js}"></script>
+</body>
+</html>

@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments :: pageHead('Orders')}"></head>
+<body class="staff">
+<header th:replace="~{fragments :: staffHeader('orders')}"></header>
+
+<main class="container">
+    <div class="staff-toolbar">
+        <div class="chips" role="group" aria-label="Filter orders" data-filters>
+            <button class="chip" type="button" data-filter="ACTIVE" aria-pressed="true">Active board</button>
+            <button class="chip" type="button" data-filter="AWAITING_PAYMENT" aria-pressed="false">Awaiting counter payment</button>
+            <button class="chip" type="button" data-filter="PLACED" aria-pressed="false">New</button>
+            <button class="chip" type="button" data-filter="CONFIRMED" aria-pressed="false">Confirmed</button>
+            <button class="chip" type="button" data-filter="PREPARING" aria-pressed="false">Preparing</button>
+            <button class="chip" type="button" data-filter="READY" aria-pressed="false">Ready</button>
+            <button class="chip" type="button" data-filter="COMPLETED" aria-pressed="false">Completed</button>
+            <button class="chip" type="button" data-filter="CANCELLED" aria-pressed="false">Cancelled</button>
+        </div>
+        <form class="pickup-box" data-pickup-form>
+            <input class="input" name="ref" placeholder="Order ref" required autocomplete="off" aria-label="Order reference">
+            <input class="input" name="otp" placeholder="Pickup OTP" inputmode="numeric" maxlength="6" pattern="\d{6}"
+                   required autocomplete="off" aria-label="Pickup OTP" style="width:120px">
+            <button class="btn btn-ok" type="submit">Verify pickup</button>
+        </form>
+    </div>
+    <p class="poll-note"><span class="live-dot"></span> <span data-updated>Loading…</span>
+        <button class="btn btn-sm" type="button" data-refresh>Refresh now</button></p>
+
+    <div class="board" data-board></div>
+</main>
+
+<script th:src="@{/js/app.js}"></script>
+<script th:src="@{/js/staff.js}"></script>
+</body>
+</html>

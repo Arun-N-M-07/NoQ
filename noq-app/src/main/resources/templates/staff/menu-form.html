@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments :: pageHead(${itemId} ? 'Edit item' : 'Add item')}"></head>
+<body class="staff">
+<header th:replace="~{fragments :: staffHeader('menu')}"></header>
+
+<main class="container" style="max-width:760px">
+    <div class="page-title"><h1 th:text="${itemId} ? 'Edit menu item' : 'Add menu item'">Add menu item</h1></div>
+
+    <!-- th:object + th:field bind the form to the MenuItemRequest; th:errors shows @Valid messages from the server -->
+    <form class="card pad" method="post" th:object="${form}"
+          th:action="${itemId} ? @{/staff/menu/{id}(id=${itemId})} : @{/staff/menu}">
+        <div class="alert alert-bad" th:if="${#fields.hasErrors('*')}">Please fix the highlighted fields.</div>
+        <div class="form-grid">
+            <div class="field full">
+                <label for="name">Name</label>
+                <input class="input" th:field="*{name}" maxlength="80" required>
+                <span class="field-error" th:if="${#fields.hasErrors('name')}" th:errors="*{name}"></span>
+            </div>
+            <div class="field full">
+                <label for="description">Description</label>
+                <textarea class="input" th:field="*{description}" rows="2" maxlength="300"></textarea>
+                <span class="field-error" th:if="${#fields.hasErrors('description')}" th:errors="*{description}"></span>
+            </div>
+            <div class="field">
+                <label for="category">Category</label>
+                <select class="input" th:field="*{category}" required>
+                    <option value="">Choose…</option>
+                    <option th:each="c : ${categories}" th:value="${c}" th:text="|${c.emoji} ${c.label}|"></option>
+                </select>
+                <span class="field-error" th:if="${#fields.hasErrors('category')}" th:errors="*{category}"></span>
+            </div>
+            <div class="field">
+                <label for="price">Price (₹)</label>
+                <input class="input" type="number" step="0.01" min="1" max="5000" th:field="*{price}" required>
+                <span class="field-error" th:if="${#fields.hasErrors('price')}" th:errors="*{price}"></span>
+            </div>
+            <div class="field" th:if="${itemId == null}"> <!-- stock of existing items is changed in the menu table, never here -->
+                <label for="availableQuantity">Stock</label>
+                <input class="input" type="number" min="0" max="10000" th:field="*{availableQuantity}" required>
+                <span class="field-error" th:if="${#fields.hasErrors('availableQuantity')}" th:errors="*{availableQuantity}"></span>
+            </div>
+            <div class="field" style="align-content:end">
+                <label style="display:flex;gap:8px;align-items:center;font-weight:600">
+                    <input type="checkbox" th:field="*{available}" style="accent-color:var(--accent);width:18px;height:18px"> On sale (untick = sold out)
+                </label>
+            </div>
+            <div class="field full">
+                <label for="imageUrl">Image URL (optional)</label>
+                <input class="input" th:field="*{imageUrl}" placeholder="https://… or /images/…" maxlength="300">
+                <span class="field-error" th:if="${#fields.hasErrors('imageUrl')}" th:errors="*{imageUrl}"></span>
+            </div>
+        </div>
+        <div style="display:flex;gap:10px">
+            <button class="btn btn-primary" type="submit">Save</button>
+            <a class="btn" th:href="@{/staff/menu}">Cancel</a>
+        </div>
+    </form>
+</main>
+</body>
+</html>

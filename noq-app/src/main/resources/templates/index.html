@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments :: pageHead('Menu')}"></head>
+<body>
+<header th:replace="~{fragments :: siteHeader}"></header>
+
+<main class="container">
+    <!-- Hero: tagline, live canteen status, quick tracking -->
+    <section class="hero">
+        <div>
+            <h1>No Queue.<br><span>Just Order.</span></h1>
+            <p>Pre-order from the college canteen, get a pickup code, and collect your food when it's ready.</p>
+            <div class="hero-meta">
+                <span th:if="${canteenOpen}" class="pill pill-ok"><span class="dot"></span>
+                    Open now · <span th:text="|${opensAt} – ${closesAt}|">08:00 – 18:00</span></span>
+                <span th:unless="${canteenOpen}" class="pill pill-warn"><span class="dot"></span>
+                    Closed · opens at <span th:text="${opensAt}">08:00</span> · pre-orders welcome</span>
+                <span class="steps"><span><b>1</b> Order</span>→<span><b>2</b> Get code</span>→<span><b>3</b> Collect</span></span>
+            </div>
+        </div>
+        <div class="card pad track-box">
+            <label for="track-ref">Track an order</label>
+            <form th:action="@{/track}" method="get">
+                <input id="track-ref" class="input" name="ref" placeholder="NQ-2026-XXXXX" autocomplete="off" required
+                       pattern="[Nn][Qq]-\d{4}-[A-Za-z0-9]{5}" title="Order reference like NQ-2026-AB12C">
+                <button class="btn btn-primary" type="submit">Track</button>
+            </form>
+            <div class="recent-orders" data-recent-orders></div>
+        </div>
+    </section>
+
+    <!-- Popular items: real order counts, or a curated fallback for a brand-new canteen -->
+    <section class="section" th:unless="${#lists.isEmpty(popular)}">
+        <div class="section-head">
+            <h2 th:text="${popularIsFromOrders} ? 'Popular right now' : 'House favourites'">Popular right now</h2>
+            <span class="muted small" th:text="${popularIsFromOrders} ? 'Based on real orders' : 'Not enough orders yet - our picks'"></span>
+        </div>
+        <div class="popular-strip">
+            <article class="card popular-card" th:each="item, stat : ${popular}">
+                <div class="thumb" style="width:64px;height:64px;border-radius:10px">
+                    <img th:if="${item.imageUrl}" th:src="${item.imageUrl}" th:alt="${item.name}" loading="lazy"
+                         th:attr="data-fallback=${item.categoryEmoji}">
+                    <div th:unless="${item.imageUrl}" class="img-fallback" th:text="${item.categoryEmoji}"></div>
+                </div>
+                <div style="flex:1;min-width:0">
+                    <div class="rank" th:text="|#${stat.count}|">#1</div>
+                    <h3 th:text="${item.name}">Item</h3>
+                    <div class="small"><b th:text="|₹${item.price}|">₹0</b>
+                        <span class="muted" th:if="${item.popularityCount > 0}" th:text="|· ${item.popularityCount} ordered|"></span></div>
+                </div>
+                <button class="btn btn-sm btn-primary" type="button" th:attr="data-add=${item.id}"
+                        th:aria-label="|Add ${item.name}|">Add</button>
+            </article>
+        </div>
+    </section>
+
+    <!-- Menu -->
+    <section class="section" id="menu">
+        <div class="section-head"><h2>Menu</h2><span class="muted small" data-result-count></span></div>
+        <div class="toolbar">
+            <div class="toolbar-row">
+                <label class="sr-only" for="search">Search menu</label>
+                <input id="search" class="input" type="search" placeholder="Search dosa, coffee, burger…" autocomplete="off">
+                <label class="sr-only" for="sort">Sort</label>
+                <select id="sort" class="input">
+                    <option value="default">Sort: Menu order</option>
+                    <option value="popular">Most popular</option>
+                    <option value="price-asc">Price: low to high</option>
+                    <option value="price-desc">Price: high to low</option>
+                    <option value="name">Name A–Z</option>
+                </select>
+            </div>
+            <div class="chips" role="group" aria-label="Category">
+                <button class="chip" type="button" data-category="ALL" aria-pressed="true">All</button>
+                <button class="chip" type="button" th:each="c : ${categories}" th:attr="data-category=${c.name()}"
+                        aria-pressed="false" th:text="|${c.emoji} ${c.label}|">Snacks</button>
+            </div>
+        </div>
+
+        <div class="menu-grid" data-menu-grid>
+            <!-- Each card carries its data in data-* attributes so the cart JavaScript can read it -->
+            <article th:each="item, stat : ${menu}" class="card menu-card"
+                     th:classappend="${item.orderable} ? '' : 'sold-out'"
+                     th:attr="data-id=${item.id}, data-name=${item.name}, data-price=${item.price},
+                              data-category=${item.category}, data-popularity=${item.popularityCount},
+                              data-stock=${item.availableQuantity}, data-orderable=${item.orderable},
+                              data-image=${item.imageUrl}, data-emoji=${item.categoryEmoji}, data-order=${stat.index}">
+                <div class="media">
+                    <img th:if="${item.imageUrl}" th:src="${item.imageUrl}" th:alt="${item.name}" loading="lazy"
+                         th:attr="data-fallback=${item.categoryEmoji}">
+                    <div th:unless="${item.imageUrl}" class="img-fallback" th:text="${item.categoryEmoji}"></div>
+                    <span class="pill tag" th:text="${item.categoryLabel}">Snacks</span>
+                </div>
+                <div class="body">
+                    <h3 th:text="${item.name}">Name</h3>
+                    <p class="desc" th:text="${item.description}"></p>
+                    <span th:if="${!item.orderable}" class="stock out">Sold out</span>
+                    <span th:if="${item.orderable and item.availableQuantity <= 5}" class="stock low"
+                          th:text="|Only ${item.availableQuantity} left|"></span>
+                    <span th:if="${item.orderable and item.availableQuantity > 5}" class="stock muted">Available</span>
+                    <div class="foot">
+                        <span class="price" th:text="|₹${item.price}|">₹0</span>
+                        <div data-cart-control>
+                            <button th:if="${item.orderable}" class="btn btn-primary btn-sm" type="button"
+                                    th:attr="data-add=${item.id}" th:aria-label="|Add ${item.name} to cart|">Add</button>
+                            <button th:unless="${item.orderable}" class="btn btn-sm" type="button" disabled>Sold out</button>
+                        </div>
+                    </div>
+                </div>
+            </article>
+        </div>
+        <p class="empty hidden" data-empty>No dishes match your search.</p>
+    </section>
+    <div class="page-bottom-space"></div>
+</main>
+
+<a class="cart-bar hidden" th:href="@{/cart}" data-cart-bar>
+    <span><strong data-cart-bar-count>0 items</strong><br><span class="small" data-cart-bar-total>₹0</span></span>
+    <span class="btn">View cart →</span>
+</a>
+
+<footer th:replace="~{fragments :: siteFooter}"></footer>
+<script th:src="@{/js/app.js}"></script>
+<script th:src="@{/js/menu.js}"></script>
+</body>
+</html>

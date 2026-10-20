@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Aggregator POM: lets you build both applications with one command
+  (./mvnw clean verify). Each module still has its OWN pom.xml with
+  spring-boot-starter-parent, so each one is an independent Spring Boot app.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.noq</groupId>
+    <artifactId>noq-parent</artifactId>
+    <version>1.0.0</version>
+    <packaging>pom</packaging>
+    <name>NoQ - Smart Canteen (aggregator)</name>
+
+    <modules>
+        <module>noq-app</module>
+        <module>noq-notification-service</module>
+    </modules>
+</project>

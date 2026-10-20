@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments :: pageHead('Track order')}"></head>
+<body>
+<header th:replace="~{fragments :: siteHeader}"></header>
+
+<main class="container">
+    <div class="track-layout">
+        <div class="page-title"><h1>Track your order</h1></div>
+
+        <!-- Shown when we don't know the order yet (or this device doesn't have its OTP) -->
+        <form class="card pad hidden" data-lookup-form>
+            <p class="muted" style="margin-top:0" data-lookup-hint>Enter your order reference and pickup code.</p>
+            <div class="field">
+                <label for="ref">Order reference</label>
+                <input id="ref" class="input" name="ref" placeholder="NQ-2026-XXXXX" required autocomplete="off"
+                       pattern="[Nn][Qq]-\d{4}-[A-Za-z0-9]{5}">
+            </div>
+            <div class="field">
+                <label for="otp">Pickup code (6 digits)</label>
+                <input id="otp" class="input" name="otp" inputmode="numeric" pattern="\d{6}" maxlength="6" required autocomplete="off">
+            </div>
+            <div class="alert alert-bad hidden" role="alert" data-lookup-error></div>
+            <button class="btn btn-primary btn-block" type="submit">Show my order</button>
+        </form>
+
+        <!-- Live order view -->
+        <section class="hidden" data-order-view style="display:grid;gap:16px">
+            <div class="alert alert-ok hidden" data-new-order>Order placed! Keep this page open - it updates by itself.</div>
+
+            <div class="card pad">
+                <div class="order-head">
+                    <div>
+                        <div class="muted small">Order</div>
+                        <div class="order-ref" data-ref>NQ-…</div>
+                    </div>
+                    <div style="display:flex;gap:6px;flex-wrap:wrap" data-pills></div>
+                </div>
+                <ol class="progress" style="margin-top:18px" aria-label="Order progress" data-progress>
+                    <li data-step="PLACED">Placed</li>
+                    <li data-step="CONFIRMED">Confirmed</li>
+                    <li data-step="PREPARING">Preparing</li>
+                    <li data-step="READY">Ready</li>
+                    <li data-step="COMPLETED">Collected</li>
+                </ol>
+                <p class="poll-note" style="margin-bottom:0" data-poll-note><span class="live-dot"></span> Live - refreshes every 5 seconds</p>
+            </div>
+
+            <div class="ready-banner hidden" data-ready role="status">
+                🎉 Your order is ready!
+                <p>Go to the NoQ pickup counter and show your pickup code. <span data-ready-pay></span></p>
+            </div>
+            <div class="alert alert-bad hidden" data-cancelled>This order was cancelled. Any reserved items were released.</div>
+            <div class="alert alert-warn hidden" data-pay-needed>
+                Online payment not completed. <a data-pay-link href="#">Complete the demo payment →</a>
+            </div>
+
+            <div class="otp-card hidden" data-otp-card>
+                <div class="label">Pickup code - show at the counter</div>
+                <div class="otp" data-otp>••••••</div>
+                <div class="small" style="opacity:.75">Don't share this code. It's only stored on this device.</div>
+            </div>
+
+            <div class="card pad hidden" data-details>
+                <h2 style="font-size:1.1rem;margin-bottom:8px">Items</h2>
+                <ul class="items-list" data-items></ul>
+                <div class="summary-row total"><span>Total</span><span data-total></span></div>
+                <button class="btn btn-danger btn-sm hidden" type="button" style="margin-top:10px" data-cancel>Cancel order</button>
+            </div>
+            <a th:href="@{/}" class="btn">← Back to menu</a>
+        </section>
+    </div>
+</main>
+
+<footer th:replace="~{fragments :: siteFooter}"></footer>
+<script th:src="@{/js/app.js}"></script>
+<script th:src="@{/js/track.js}"></script>
+</body>
+</html>

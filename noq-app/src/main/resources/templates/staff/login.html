@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments :: pageHead('Staff login')}"></head>
+<body class="staff">
+<main class="container login-wrap">
+    <a class="brand" th:href="@{/}" style="justify-content:center;margin-bottom:20px">
+        <span class="brand-mark">Q</span><span class="brand-name">NoQ Staff</span>
+    </a>
+    <!-- Spring Security processes POST /staff/login; th:action adds the hidden CSRF token automatically -->
+    <form class="card pad" th:action="@{/staff/login}" method="post">
+        <div class="alert alert-bad" th:if="${param.error}">Wrong username or password.</div>
+        <div class="alert alert-ok" th:if="${param.logout}">You have been logged out.</div>
+        <div class="field">
+            <label for="username">Username</label>
+            <input id="username" class="input" name="username" autocomplete="username" required autofocus>
+        </div>
+        <div class="field">
+            <label for="password">Password</label>
+            <input id="password" class="input" type="password" name="password" autocomplete="current-password" required>
+        </div>
+        <button class="btn btn-primary btn-block" type="submit">Log in</button>
+    </form>
+    <p class="muted small" style="text-align:center"><a th:href="@{/}">← Customer menu</a></p>
+</main>
+</body>
+</html>

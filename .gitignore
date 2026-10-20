@@ -1,0 +1,26 @@
+# Build output
+target/
+*.class
+*.jar
+!.mvn/wrapper/maven-wrapper.jar
+
+# Local secrets - never commit
+.env
+*.env
+!.env.example
+application-local.properties
+
+# IDEs (STS/Eclipse, IntelliJ, VS Code)
+.project
+.classpath
+.settings/
+.factorypath
+.springBeans
+.sts4-cache/
+.idea/
+*.iml
+.vscode/
+
+# OS / logs
+.DS_Store
+*.log
