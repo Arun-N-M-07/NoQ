@@ -1,4 +1,4 @@
-/* Cart + checkout. Shows the cart, refreshes prices/stock from the server, then POSTs the order. */
+/* Cart + checkout. Shows the cart, refreshes prices/stock from the server, POSTs the order, then shows the confirmation. */
 (() => {
   const linesEl = document.querySelector('[data-cart-lines]');
   const errorEl = document.querySelector('[data-error]');
@@ -26,7 +26,7 @@
             <div class="stepper">
               <button type="button" data-qty="${line.id}" data-delta="-1" aria-label="Remove one ${NoQ.escapeHtml(line.name)}">−</button>
               <span>${line.qty}</span>
-              <button type="button" data-qty="${line.id}" data-delta="1" aria-label="Add one ${NoQ.escapeHtml(line.name)}">+</button>
+              <button type="button" data-qty="${line.id}" data-delta="1" aria-label="Add one ${NoQ.escapeHtml(line.name)}" ${problem ? 'disabled' : ''}>+</button>
             </div>
             <span class="line-total">${NoQ.money(line.qty * line.price)}</span>
             <button class="btn btn-sm btn-danger" type="button" data-remove="${line.id}">Remove</button>
@@ -74,21 +74,19 @@
     // Same key for retries of THIS checkout, so a double click or network retry can't create two orders.
     let key = sessionStorage.getItem('noq.checkoutKey');
     if (!key) { key = NoQ.randomKey(); sessionStorage.setItem('noq.checkoutKey', key); }
-    const paymentMethod = document.querySelector('input[name=payment]:checked').value;
     try {
       const order = await NoQ.api('/api/orders', {
         method: 'POST',
         body: {
           items: Object.values(NoQ.cart.all()).map(l => ({ menuItemId: Number(l.id), quantity: l.qty })),
-          paymentMethod,
           idempotencyKey: key
         }
       });
-      NoQ.orders.remember(order.orderReference, order.pickupOtp);
+      NoQ.lastOrder.save(order);
       NoQ.cart.clear();
       sessionStorage.removeItem('noq.checkoutKey');
-      const ref = encodeURIComponent(order.orderReference);
-      location.href = paymentMethod === 'ONLINE' ? `/pay/${ref}` : `/track?ref=${ref}&new=1`;
+      showConfirmation(order, 'Order confirmed');
+      watch(order);
     } catch (err) {
       if (err.status !== 409 || !err.message.includes('already submitted')) sessionStorage.removeItem('noq.checkoutKey');
       errorEl.textContent = err.message;
@@ -98,6 +96,68 @@
     }
   });
 
-  render();
-  refreshFromServer();
+  // ---------- Order confirmation (everything shown comes from the server) ----------
+  const confirmation = document.querySelector('[data-confirmation]');
+  const PILL = { PREPARING: 'pill-warn', READY_FOR_PICKUP: 'pill-ok', COLLECTED: 'pill-ok', CANCELLED: 'pill-bad' };
+  const FINAL = ['COLLECTED', 'CANCELLED'];
+
+  function message(order) {
+    if (order.status === 'COLLECTED') return 'Collected — enjoy your meal!';
+    if (order.status === 'CANCELLED') return 'This order was cancelled. Any reserved items were released.';
+    if (order.status === 'READY_FOR_PICKUP') return 'Your order is ready! Show your pickup code at the counter.';
+    return order.message;
+  }
+
+  function showConfirmation(order, title) {
+    const esc = NoQ.escapeHtml;
+    if (title) document.querySelector('[data-page-title]').textContent = title;
+    document.querySelector('[data-cart-empty]').classList.add('hidden');
+    document.querySelector('[data-checkout]').classList.add('hidden');
+    confirmation.classList.remove('hidden');
+    const alert = confirmation.querySelector('[data-confirm-message]');
+    alert.textContent = message(order);
+    alert.className = 'alert ' + (order.status === 'CANCELLED' ? 'alert-bad' : 'alert-ok');
+    confirmation.querySelector('[data-otp]').textContent = order.pickupOtp;
+    confirmation.querySelector('[data-ref]').textContent = order.orderReference;
+    const statusPill = confirmation.querySelector('[data-order-status]');
+    statusPill.textContent = `Status: ${order.status.replaceAll('_', ' ')}`; // PREPARING, READY FOR PICKUP, COLLECTED
+    statusPill.className = 'pill ' + PILL[order.status];
+    const pill = confirmation.querySelector('[data-pay-status]');
+    pill.textContent = `Payment: ${order.paymentStatus}`;
+    pill.className = 'pill ' + (order.paymentStatus === 'PAID' ? 'pill-ok' : 'pill-warn');
+    confirmation.querySelector('[data-items]').innerHTML = order.items.map(i =>
+      `<li><span>${i.quantity} × ${esc(i.name)}</span><span>${NoQ.money(i.lineTotal)}</span></li>`).join('');
+    confirmation.querySelector('[data-order-total]').textContent = NoQ.money(order.totalAmount);
+  }
+
+  /** While the confirmation is open, re-read the order's saved status every 5 s (the OTP header proves it is ours). */
+  let poll;
+  function watch(order) {
+    if (!FINAL.includes(order.status)) poll = setInterval(refreshStatus, 5000);
+  }
+
+  async function refreshStatus() {
+    const order = NoQ.lastOrder.get();
+    try {
+      const latest = await NoQ.api(`/api/orders/${encodeURIComponent(order.orderReference)}`,
+        { headers: { 'X-Pickup-Otp': order.pickupOtp } });
+      Object.assign(order, { status: latest.status, paymentStatus: latest.paymentStatus });
+      NoQ.lastOrder.save(order);
+      showConfirmation(order);
+      if (FINAL.includes(order.status)) clearInterval(poll);
+    } catch (err) {
+      if (err.status) clearInterval(poll); // the server said no (e.g. order unknown): stop; a network blip just retries
+    }
+  }
+
+  // An empty cart shows the last order's confirmation (so a refresh never loses the pickup code).
+  const last = NoQ.lastOrder.get();
+  if (last && NoQ.cart.count() === 0) {
+    showConfirmation(last, 'Your last order');
+    watch(last);
+    refreshStatus(); // show the current status straight away, not the one saved at checkout
+  } else {
+    render();
+    refreshFromServer();
+  }
 })();

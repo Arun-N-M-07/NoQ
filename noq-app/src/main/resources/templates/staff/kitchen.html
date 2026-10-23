@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments :: pageHead('Kitchen')}"></head>
+<body class="staff">
+<header th:replace="~{fragments :: staffHeader('kitchen')}"></header>
+
+<main class="container orders-page">
+    <div class="page-title"><h1>Kitchen</h1></div>
+    <div class="tabs" role="tablist">
+        <button class="chip" type="button" role="tab" data-tab="menu" aria-selected="true">Menu Availability</button>
+        <button class="chip" type="button" role="tab" data-tab="orders" aria-selected="false">Incoming Orders</button>
+    </div>
+
+    <!-- Tab A: one Available / Not available switch per dish (kitchen.js -> PATCH /api/menu/{id}/availability) -->
+    <section data-panel="menu">
+        <div class="card" data-availability><p class="empty">Loading…</p></div>
+    </section>
+
+    <!-- Tab B: orders still PREPARING, each with one "Ready for Pickup" button (staff.js, refreshed every 10 s) -->
+    <section class="hidden" data-panel="orders">
+        <p class="poll-note" style="margin-bottom:10px"><span class="live-dot"></span> <span data-updated>Loading…</span></p>
+        <div class="orders-list" data-orders data-mode="kitchen"></div>
+    </section>
+</main>
+
+<script th:src="@{/js/app.js}"></script>
+<script th:src="@{/js/staff.js}"></script>
+<script th:src="@{/js/kitchen.js}"></script>
+</body>
+</html>

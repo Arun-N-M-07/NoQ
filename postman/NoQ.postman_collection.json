@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "NoQ - Smart Canteen API",
-    "description": "Run the folders top to bottom. Variables orderRef/otp are filled automatically by the 'Place order' requests. Online payment is SIMULATED.",
+    "description": "Run the folders top to bottom. Variables orderRef/otp are filled automatically by the 'Place order' requests. Payment is at the counter only.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -14,20 +14,20 @@
       "value": "http://localhost:8081"
     },
     {
-      "key": "adminUser",
-      "value": "admin"
-    },
-    {
-      "key": "adminPass",
-      "value": "admin123"
-    },
-    {
-      "key": "staffUser",
+      "key": "kitchenUser",
       "value": "kitchen"
     },
     {
-      "key": "staffPass",
+      "key": "kitchenPass",
       "value": "kitchen123"
+    },
+    {
+      "key": "staffUser",
+      "value": "staff"
+    },
+    {
+      "key": "staffPass",
+      "value": "staff123"
     },
     {
       "key": "orderRef",
@@ -38,23 +38,7 @@
       "value": ""
     },
     {
-      "key": "onlineRef",
-      "value": ""
-    },
-    {
-      "key": "onlineOtp",
-      "value": ""
-    },
-    {
       "key": "cancelRef",
-      "value": ""
-    },
-    {
-      "key": "cancelOtp",
-      "value": ""
-    },
-    {
-      "key": "newItemId",
       "value": ""
     }
   ],
@@ -240,124 +224,10 @@
       ]
     },
     {
-      "name": "2. Menu management (ADMIN)",
+      "name": "2. Kitchen: menu availability (KITCHEN)",
       "item": [
         {
-          "name": "Create item -> 201",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/menu",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "menu"
-              ]
-            },
-            "description": "",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"name\": \"Vada Pav\",\n  \"description\": \"Mumbai-style potato fritter in a pav with chutneys.\",\n  \"category\": \"SNACKS\",\n  \"price\": 25.0,\n  \"imageUrl\": \"\",\n  \"availableQuantity\": 40,\n  \"available\": true\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "auth": {
-              "type": "basic",
-              "basic": [
-                {
-                  "key": "username",
-                  "value": "{{adminUser}}"
-                },
-                {
-                  "key": "password",
-                  "value": "{{adminPass}}"
-                }
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 201', () => pm.response.to.have.status(201));",
-                  "pm.collectionVariables.set('newItemId', pm.response.json().id);"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "Update item (PUT)",
-          "request": {
-            "method": "PUT",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/menu/{{newItemId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "menu",
-                "{{newItemId}}"
-              ]
-            },
-            "description": "",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"name\": \"Vada Pav (Jumbo)\",\n  \"description\": \"Bigger vada, same chutneys.\",\n  \"category\": \"SNACKS\",\n  \"price\": 30.0,\n  \"availableQuantity\": 40,\n  \"available\": true\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "auth": {
-              "type": "basic",
-              "basic": [
-                {
-                  "key": "username",
-                  "value": "{{adminUser}}"
-                },
-                {
-                  "key": "password",
-                  "value": "{{adminPass}}"
-                }
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 200', () => pm.response.to.have.status(200));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "Update stock (PATCH)",
+          "name": "Kitchen: mark Masala Dosa not available",
           "request": {
             "method": "PATCH",
             "header": [
@@ -367,72 +237,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/menu/{{newItemId}}/availability",
+              "raw": "{{baseUrl}}/api/menu/1/availability",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "api",
                 "menu",
-                "{{newItemId}}",
-                "availability"
-              ]
-            },
-            "description": "",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"availableQuantity\": 5\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "auth": {
-              "type": "basic",
-              "basic": [
-                {
-                  "key": "username",
-                  "value": "{{adminUser}}"
-                },
-                {
-                  "key": "password",
-                  "value": "{{adminPass}}"
-                }
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 200', () => pm.response.to.have.status(200));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "Mark sold out (PATCH)",
-          "request": {
-            "method": "PATCH",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/menu/{{newItemId}}/availability",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "menu",
-                "{{newItemId}}",
+                "1",
                 "availability"
               ]
             },
@@ -451,11 +263,11 @@
               "basic": [
                 {
                   "key": "username",
-                  "value": "{{adminUser}}"
+                  "value": "{{kitchenUser}}"
                 },
                 {
                   "key": "password",
-                  "value": "{{adminPass}}"
+                  "value": "{{kitchenPass}}"
                 }
               ]
             }
@@ -473,50 +285,7 @@
           ]
         },
         {
-          "name": "Deactivate (DELETE = soft delete) -> 204",
-          "request": {
-            "method": "DELETE",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/menu/{{newItemId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "menu",
-                "{{newItemId}}"
-              ]
-            },
-            "description": "",
-            "auth": {
-              "type": "basic",
-              "basic": [
-                {
-                  "key": "username",
-                  "value": "{{adminUser}}"
-                },
-                {
-                  "key": "password",
-                  "value": "{{adminPass}}"
-                }
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 204', () => pm.response.to.have.status(204));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "Invalid item -> 400",
+          "name": "Order a not-available dish -> 409",
           "request": {
             "method": "POST",
             "header": [
@@ -526,131 +295,19 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/menu",
+              "raw": "{{baseUrl}}/api/orders",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "api",
-                "menu"
+                "orders"
               ]
             },
             "description": "",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"\",\n  \"price\": -1\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "auth": {
-              "type": "basic",
-              "basic": [
-                {
-                  "key": "username",
-                  "value": "{{adminUser}}"
-                },
-                {
-                  "key": "password",
-                  "value": "{{adminPass}}"
-                }
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 400', () => pm.response.to.have.status(400));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "Kitchen staff cannot edit menu -> 403",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/menu",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "menu"
-              ]
-            },
-            "description": "",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"name\": \"X\",\n  \"category\": \"SNACKS\",\n  \"price\": 10,\n  \"availableQuantity\": 1\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "auth": {
-              "type": "basic",
-              "basic": [
-                {
-                  "key": "username",
-                  "value": "{{staffUser}}"
-                },
-                {
-                  "key": "password",
-                  "value": "{{staffPass}}"
-                }
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 403', () => pm.response.to.have.status(403));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "No login -> 401",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/menu",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "menu"
-              ]
-            },
-            "description": "",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"name\": \"X\",\n  \"category\": \"SNACKS\",\n  \"price\": 10,\n  \"availableQuantity\": 1\n}",
+              "raw": "{\n  \"items\": [\n    {\n      \"menuItemId\": 1,\n      \"quantity\": 1\n    }\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -667,7 +324,65 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 401', () => pm.response.to.have.status(401));"
+                  "pm.test('status 409', () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Kitchen: mark Masala Dosa available again",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/menu/1/availability",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "menu",
+                "1",
+                "availability"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"available\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{kitchenUser}}"
+                },
+                {
+                  "key": "password",
+                  "value": "{{kitchenPass}}"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));"
                 ]
               }
             }
@@ -701,7 +416,7 @@
             "description": "",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"items\": [\n    {\n      \"menuItemId\": 3,\n      \"quantity\": 2\n    },\n    {\n      \"menuItemId\": 7,\n      \"quantity\": 1\n    }\n  ],\n  \"paymentMethod\": \"PAY_AT_COUNTER\"\n}",
+              "raw": "{\n  \"items\": [\n    {\n      \"menuItemId\": 3,\n      \"quantity\": 2\n    },\n    {\n      \"menuItemId\": 7,\n      \"quantity\": 1\n    }\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -728,49 +443,10 @@
           ]
         },
         {
-          "name": "Public status (polling)",
+          "name": "Staff: order details",
           "request": {
             "method": "GET",
             "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/orders/{{orderRef}}/status",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "orders",
-                "{{orderRef}}",
-                "status"
-              ]
-            },
-            "description": "",
-            "auth": {
-              "type": "noauth"
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 200', () => pm.response.to.have.status(200));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "Customer details with OTP header",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "X-Pickup-Otp",
-                "value": "{{otp}}"
-              }
-            ],
             "url": {
               "raw": "{{baseUrl}}/api/orders/{{orderRef}}",
               "host": [
@@ -784,7 +460,17 @@
             },
             "description": "",
             "auth": {
-              "type": "noauth"
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{staffUser}}"
+                },
+                {
+                  "key": "password",
+                  "value": "{{staffPass}}"
+                }
+              ]
             }
           },
           "event": [
@@ -800,7 +486,7 @@
           ]
         },
         {
-          "name": "Customer details without OTP -> 403",
+          "name": "Customer: order without OTP -> 403",
           "request": {
             "method": "GET",
             "header": [],
@@ -833,12 +519,12 @@
           ]
         },
         {
-          "name": "Staff: list PLACED orders (HQL query 2)",
+          "name": "Kitchen: list PREPARING orders (HQL query 2)",
           "request": {
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/api/orders?status=PLACED",
+              "raw": "{{baseUrl}}/api/orders?status=PREPARING",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -849,7 +535,7 @@
               "query": [
                 {
                   "key": "status",
-                  "value": "PLACED"
+                  "value": "PREPARING"
                 }
               ]
             },
@@ -859,11 +545,11 @@
               "basic": [
                 {
                   "key": "username",
-                  "value": "{{staffUser}}"
+                  "value": "{{kitchenUser}}"
                 },
                 {
                   "key": "password",
-                  "value": "{{staffPass}}"
+                  "value": "{{kitchenPass}}"
                 }
               ]
             }
@@ -881,7 +567,7 @@
           ]
         },
         {
-          "name": "Staff: invalid jump PLACED->READY -> 409",
+          "name": "Kitchen: collect via status change -> 400",
           "request": {
             "method": "PATCH",
             "header": [
@@ -905,7 +591,7 @@
             "description": "",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"status\": \"READY\"\n}",
+              "raw": "{\n  \"status\": \"COLLECTED\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -917,11 +603,11 @@
               "basic": [
                 {
                   "key": "username",
-                  "value": "{{staffUser}}"
+                  "value": "{{kitchenUser}}"
                 },
                 {
                   "key": "password",
-                  "value": "{{staffPass}}"
+                  "value": "{{kitchenPass}}"
                 }
               ]
             }
@@ -932,14 +618,14 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 409', () => pm.response.to.have.status(409));"
+                  "pm.test('status 400', () => pm.response.to.have.status(400));"
                 ]
               }
             }
           ]
         },
         {
-          "name": "Staff: CONFIRMED",
+          "name": "Kitchen: Ready for Pickup (notifies microservice)",
           "request": {
             "method": "PATCH",
             "header": [
@@ -963,7 +649,7 @@
             "description": "",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"status\": \"CONFIRMED\"\n}",
+              "raw": "{\n  \"status\": \"READY_FOR_PICKUP\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -975,11 +661,11 @@
               "basic": [
                 {
                   "key": "username",
-                  "value": "{{staffUser}}"
+                  "value": "{{kitchenUser}}"
                 },
                 {
                   "key": "password",
-                  "value": "{{staffPass}}"
+                  "value": "{{kitchenPass}}"
                 }
               ]
             }
@@ -997,123 +683,7 @@
           ]
         },
         {
-          "name": "Staff: PREPARING",
-          "request": {
-            "method": "PATCH",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/orders/{{orderRef}}/status",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "orders",
-                "{{orderRef}}",
-                "status"
-              ]
-            },
-            "description": "",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"status\": \"PREPARING\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "auth": {
-              "type": "basic",
-              "basic": [
-                {
-                  "key": "username",
-                  "value": "{{staffUser}}"
-                },
-                {
-                  "key": "password",
-                  "value": "{{staffPass}}"
-                }
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 200', () => pm.response.to.have.status(200));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "Staff: READY (notifies microservice)",
-          "request": {
-            "method": "PATCH",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/orders/{{orderRef}}/status",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "orders",
-                "{{orderRef}}",
-                "status"
-              ]
-            },
-            "description": "",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"status\": \"READY\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "auth": {
-              "type": "basic",
-              "basic": [
-                {
-                  "key": "username",
-                  "value": "{{staffUser}}"
-                },
-                {
-                  "key": "password",
-                  "value": "{{staffPass}}"
-                }
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 200', () => pm.response.to.have.status(200));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "Staff: pickup before payment -> 409",
+          "name": "Staff: handover before payment -> 409",
           "request": {
             "method": "POST",
             "header": [
@@ -1123,7 +693,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/orders/{{orderRef}}/verify-pickup",
+              "raw": "{{baseUrl}}/api/orders/{{orderRef}}/collect",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -1131,7 +701,7 @@
                 "api",
                 "orders",
                 "{{orderRef}}",
-                "verify-pickup"
+                "collect"
               ]
             },
             "description": "",
@@ -1319,7 +889,7 @@
           ]
         },
         {
-          "name": "Staff: verify pickup -> COMPLETED",
+          "name": "Staff: verify OTP -> 200 (still READY_FOR_PICKUP)",
           "request": {
             "method": "POST",
             "header": [
@@ -1370,14 +940,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.response.to.have.status(200));"
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('only checked', () => pm.expect(pm.response.json().status).to.eql('READY_FOR_PICKUP'));"
                 ]
               }
             }
           ]
         },
         {
-          "name": "Staff: second pickup -> 409",
+          "name": "Staff: confirm handover -> COLLECTED",
           "request": {
             "method": "POST",
             "header": [
@@ -1387,7 +958,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/orders/{{orderRef}}/verify-pickup",
+              "raw": "{{baseUrl}}/api/orders/{{orderRef}}/collect",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -1395,7 +966,66 @@
                 "api",
                 "orders",
                 "{{orderRef}}",
-                "verify-pickup"
+                "collect"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"otp\": \"{{otp}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{staffUser}}"
+                },
+                {
+                  "key": "password",
+                  "value": "{{staffPass}}"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('collected', () => pm.expect(pm.response.json().status).to.eql('COLLECTED'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Staff: second handover -> 409",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/{{orderRef}}/collect",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "{{orderRef}}",
+                "collect"
               ]
             },
             "description": "",
@@ -1433,156 +1063,29 @@
               }
             }
           ]
-        }
-      ]
-    },
-    {
-      "name": "4. Online (SIMULATED) payment order",
-      "item": [
-        {
-          "name": "Place online order -> 201",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/orders",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "orders"
-              ]
-            },
-            "description": "",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"items\": [\n    {\n      \"menuItemId\": 2,\n      \"quantity\": 1\n    }\n  ],\n  \"paymentMethod\": \"ONLINE\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "auth": {
-              "type": "noauth"
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
-                  "const b = pm.response.json();",
-                  "pm.collectionVariables.set('onlineRef', b.orderReference);",
-                  "pm.collectionVariables.set('onlineOtp', b.pickupOtp);"
-                ]
-              }
-            }
-          ]
         },
         {
-          "name": "Staff: confirm before payment -> 409",
+          "name": "Customer: order with OTP header -> COLLECTED (what the confirmation screen shows)",
           "request": {
-            "method": "PATCH",
+            "method": "GET",
             "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/orders/{{onlineRef}}/status",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "orders",
-                "{{onlineRef}}",
-                "status"
-              ]
-            },
-            "description": "",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"status\": \"CONFIRMED\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "auth": {
-              "type": "basic",
-              "basic": [
-                {
-                  "key": "username",
-                  "value": "{{staffUser}}"
-                },
-                {
-                  "key": "password",
-                  "value": "{{staffPass}}"
-                }
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 409', () => pm.response.to.have.status(409));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "Mock payment FAILS",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
               {
                 "key": "X-Pickup-Otp",
-                "value": "{{onlineOtp}}"
+                "value": "{{otp}}"
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/orders/{{onlineRef}}/payments/mock-online",
+              "raw": "{{baseUrl}}/api/orders/{{orderRef}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "api",
                 "orders",
-                "{{onlineRef}}",
-                "payments",
-                "mock-online"
+                "{{orderRef}}"
               ]
             },
             "description": "",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"success\": false\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
             "auth": {
               "type": "noauth"
             }
@@ -1593,171 +1096,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.response.to.have.status(200));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "Mock payment SUCCEEDS",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "X-Pickup-Otp",
-                "value": "{{onlineOtp}}"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/orders/{{onlineRef}}/payments/mock-online",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "orders",
-                "{{onlineRef}}",
-                "payments",
-                "mock-online"
-              ]
-            },
-            "description": "",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"success\": true\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "auth": {
-              "type": "noauth"
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 200', () => pm.response.to.have.status(200));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "Pay again -> 409",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "X-Pickup-Otp",
-                "value": "{{onlineOtp}}"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/orders/{{onlineRef}}/payments/mock-online",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "orders",
-                "{{onlineRef}}",
-                "payments",
-                "mock-online"
-              ]
-            },
-            "description": "",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"success\": true\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "auth": {
-              "type": "noauth"
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 409', () => pm.response.to.have.status(409));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "Staff: confirm (now allowed)",
-          "request": {
-            "method": "PATCH",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/orders/{{onlineRef}}/status",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "orders",
-                "{{onlineRef}}",
-                "status"
-              ]
-            },
-            "description": "",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"status\": \"CONFIRMED\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "auth": {
-              "type": "basic",
-              "basic": [
-                {
-                  "key": "username",
-                  "value": "{{staffUser}}"
-                },
-                {
-                  "key": "password",
-                  "value": "{{staffPass}}"
-                }
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 200', () => pm.response.to.have.status(200));"
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('collected', () => pm.expect(pm.response.json().status).to.eql('COLLECTED'));"
                 ]
               }
             }
@@ -1766,7 +1106,7 @@
       ]
     },
     {
-      "name": "5. Errors & cancellation",
+      "name": "4. Errors & cancellation",
       "item": [
         {
           "name": "Sold-out item -> 409",
@@ -1791,7 +1131,7 @@
             "description": "",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"items\": [\n    {\n      \"menuItemId\": 16,\n      \"quantity\": 1\n    }\n  ],\n  \"paymentMethod\": \"PAY_AT_COUNTER\"\n}",
+              "raw": "{\n  \"items\": [\n    {\n      \"menuItemId\": 16,\n      \"quantity\": 1\n    }\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1837,7 +1177,7 @@
             "description": "",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"items\": [\n    {\n      \"menuItemId\": 9999,\n      \"quantity\": 1\n    }\n  ],\n  \"paymentMethod\": \"PAY_AT_COUNTER\"\n}",
+              "raw": "{\n  \"items\": [\n    {\n      \"menuItemId\": 9999,\n      \"quantity\": 1\n    }\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1883,7 +1223,7 @@
             "description": "",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"items\": [\n    {\n      \"menuItemId\": 1,\n      \"quantity\": 0\n    }\n  ],\n  \"paymentMethod\": \"PAY_AT_COUNTER\"\n}",
+              "raw": "{\n  \"items\": [\n    {\n      \"menuItemId\": 1,\n      \"quantity\": 0\n    }\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1929,7 +1269,7 @@
             "description": "",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"items\": [\n    {\n      \"menuItemId\": 5,\n      \"quantity\": 1\n    }\n  ],\n  \"paymentMethod\": \"PAY_AT_COUNTER\"\n}",
+              "raw": "{\n  \"items\": [\n    {\n      \"menuItemId\": 5,\n      \"quantity\": 1\n    }\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1948,25 +1288,24 @@
                 "exec": [
                   "pm.test('201 Created', () => pm.response.to.have.status(201));",
                   "const b = pm.response.json();",
-                  "pm.collectionVariables.set('cancelRef', b.orderReference);",
-                  "pm.collectionVariables.set('cancelOtp', b.pickupOtp);"
+                  "pm.collectionVariables.set('cancelRef', b.orderReference);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "Customer cancels (stock restored)",
+          "name": "Cancel an order still PREPARING (stock restored)",
           "request": {
-            "method": "POST",
+            "method": "PATCH",
             "header": [
               {
-                "key": "X-Pickup-Otp",
-                "value": "{{cancelOtp}}"
+                "key": "Content-Type",
+                "value": "application/json"
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/orders/{{cancelRef}}/cancel",
+              "raw": "{{baseUrl}}/api/orders/{{cancelRef}}/status",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -1974,12 +1313,31 @@
                 "api",
                 "orders",
                 "{{cancelRef}}",
-                "cancel"
+                "status"
               ]
             },
             "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"CANCELLED\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
             "auth": {
-              "type": "noauth"
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{kitchenUser}}"
+                },
+                {
+                  "key": "password",
+                  "value": "{{kitchenPass}}"
+                }
+              ]
             }
           },
           "event": [
@@ -2029,7 +1387,7 @@
       ]
     },
     {
-      "name": "6. Viva demos (STAFF)",
+      "name": "5. Viva demos (STAFF)",
       "item": [
         {
           "name": "Hibernate SessionFactory/Session/Transaction",
@@ -2205,7 +1563,7 @@
       ]
     },
     {
-      "name": "7. Notification microservice (:8081)",
+      "name": "6. Notification microservice (:8081)",
       "item": [
         {
           "name": "Send order-ready event -> 201",

@@ -23,9 +23,9 @@ import java.io.IOException;
  * Who may call what. Authorization is enforced HERE on the server - hiding a button in the
  * page is not security.
  * <ul>
- *   <li>Customers (anonymous): menu, place order, track/pay/cancel their own order with ref + OTP.</li>
- *   <li>STAFF: order dashboard, status changes, counter payments, pickup verification.</li>
- *   <li>ADMIN: everything STAFF can, plus menu management.</li>
+ *   <li>Customers (anonymous): menu, place order, and read their own order back with ref + OTP.</li>
+ *   <li>KITCHEN: Kitchen page - dish availability, incoming orders, "Ready for Pickup".</li>
+ *   <li>STAFF: Staff page - ready orders, counter payment, pickup OTP check and handover.</li>
  * </ul>
  * Browser pages use a login form (session cookie); Postman uses HTTP Basic authentication.
  */
@@ -50,21 +50,21 @@ public class SecurityConfig {
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http.authorizeHttpRequests(auth -> auth
                         // public pages and static files
-                        .requestMatchers("/", "/cart", "/track", "/pay/*", "/staff/login", "/error",
+                        .requestMatchers("/", "/cart", "/staff/login", "/error",
                                 "/css/**", "/js/**", "/images/**", "/favicon.ico").permitAll()
                         .requestMatchers("/actuator/health/**").permitAll()
-                        // staff pages
-                        .requestMatchers("/staff/menu/**").hasRole("ADMIN")
-                        .requestMatchers("/staff/**").hasRole("STAFF")
-                        // menu API: anyone can read, only ADMIN can change
+                        // pages: /staff sends each user to their own page (StaffController)
+                        .requestMatchers("/staff/kitchen").hasRole("KITCHEN")
+                        .requestMatchers("/staff").hasAnyRole("KITCHEN", "STAFF")
+                        // menu API: anyone can read; the kitchen switches availability
                         .requestMatchers(HttpMethod.GET, "/api/menu/**").permitAll()
-                        .requestMatchers("/api/menu/**").hasRole("ADMIN")
-                        // order API: customer endpoints (OTP is checked inside the service)
-                        .requestMatchers(HttpMethod.POST, "/api/orders", "/api/orders/*/cancel",
-                                "/api/orders/*/payments/mock-online").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/orders").hasRole("STAFF") // list of ALL orders
-                        .requestMatchers(HttpMethod.GET, "/api/orders/*", "/api/orders/*/status").permitAll()
-                        // everything else under /api (status changes, pickup, counter payment, demos) + actuator
+                        .requestMatchers(HttpMethod.PATCH, "/api/menu/*/availability").hasRole("KITCHEN")
+                        // order API: customer endpoints (reading an order checks the OTP inside the service)
+                        .requestMatchers(HttpMethod.POST, "/api/orders").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/orders/*").permitAll() // one order (not the list)
+                        .requestMatchers(HttpMethod.GET, "/api/orders").hasAnyRole("KITCHEN", "STAFF") // each page's list
+                        .requestMatchers(HttpMethod.PATCH, "/api/orders/*/status").hasRole("KITCHEN") // Ready for Pickup
+                        // everything else under /api (counter payment, OTP check, handover, demos) + actuator
                         .requestMatchers("/api/**", "/actuator/**").hasRole("STAFF")
                         .anyRequest().authenticated())
                 .formLogin(form -> form

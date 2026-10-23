@@ -16,7 +16,7 @@ import java.util.Map;
 /**
  * Calls the separate noq-notification-service (port 8081) over HTTP using Spring's RestClient.
  * <p>
- * It runs only AFTER the "order is READY" transaction has committed, so the order status is already
+ * It runs only AFTER the "order is READY_FOR_PICKUP" transaction has committed, so the order status is already
  * saved even if the notification service is down. Failures are logged, never thrown back to the staff user.
  * Limitation: this is a synchronous call with no retry - a message broker (RabbitMQ/Kafka) would make it
  * reliable, but that is deliberately out of scope for this project.
@@ -47,7 +47,7 @@ public class NotificationClient {
             log.info("Notification service acknowledged order {} (status {})", event.orderReference(),
                     ack == null ? "?" : ack.get("status"));
         } catch (RestClientException e) {
-            log.warn("Notification service unavailable; order {} is still READY. Reason: {}",
+            log.warn("Notification service unavailable; order {} is still READY_FOR_PICKUP. Reason: {}",
                     event.orderReference(), e.getMessage());
         }
     }

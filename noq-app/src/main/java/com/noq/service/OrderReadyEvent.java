@@ -1,5 +1,5 @@
 package com.noq.service;
 
-/** Published when an order becomes READY. Carries only the public order reference. */
+/** Published when the kitchen marks an order READY_FOR_PICKUP. Carries only the public order reference. */
 public record OrderReadyEvent(String orderReference) {
 }

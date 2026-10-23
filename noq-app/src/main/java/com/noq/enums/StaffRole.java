@@ -1,6 +1,6 @@
 package com.noq.enums;
 
-/** STAFF = kitchen/counter staff (orders). ADMIN = canteen manager (orders + menu management). */
+/** KITCHEN = cooks (Kitchen page: availability, Ready for Pickup). STAFF = counter (Staff page: payment, OTP, handover). */
 public enum StaffRole {
-    STAFF, ADMIN
+    KITCHEN, STAFF
 }

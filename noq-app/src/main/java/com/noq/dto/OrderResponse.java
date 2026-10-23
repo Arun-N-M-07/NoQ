@@ -2,7 +2,6 @@ package com.noq.dto;
 
 import com.noq.entity.CustomerOrder;
 import com.noq.enums.OrderStatus;
-import com.noq.enums.PaymentMethod;
 import com.noq.enums.PaymentStatus;
 
 import java.math.BigDecimal;
@@ -13,7 +12,6 @@ import java.util.List;
 public record OrderResponse(
         String orderReference,
         OrderStatus status,
-        PaymentMethod paymentMethod,
         PaymentStatus paymentStatus,
         BigDecimal subtotal,
         BigDecimal totalAmount,
@@ -23,7 +21,7 @@ public record OrderResponse(
         List<OrderItemResponse> items) {
 
     public static OrderResponse from(CustomerOrder o) {
-        return new OrderResponse(o.getOrderReference(), o.getStatus(), o.getPaymentMethod(), o.getPaymentStatus(),
+        return new OrderResponse(o.getOrderReference(), o.getStatus(), o.getPaymentStatus(),
                 o.getSubtotal(), o.getTotalAmount(), o.getCreatedAt(), o.getUpdatedAt(), o.getCompletedAt(),
                 o.getItems().stream().map(OrderItemResponse::from).toList());
     }

@@ -5,27 +5,16 @@
 <header th:replace="~{fragments :: siteHeader}"></header>
 
 <main class="container">
-    <!-- Hero: tagline, live canteen status, quick tracking -->
+    <!-- Hero: tagline and live canteen status -->
     <section class="hero">
-        <div>
-            <h1>No Queue.<br><span>Just Order.</span></h1>
-            <p>Pre-order from the college canteen, get a pickup code, and collect your food when it's ready.</p>
-            <div class="hero-meta">
-                <span th:if="${canteenOpen}" class="pill pill-ok"><span class="dot"></span>
-                    Open now · <span th:text="|${opensAt} – ${closesAt}|">08:00 – 18:00</span></span>
-                <span th:unless="${canteenOpen}" class="pill pill-warn"><span class="dot"></span>
-                    Closed · opens at <span th:text="${opensAt}">08:00</span> · pre-orders welcome</span>
-                <span class="steps"><span><b>1</b> Order</span>→<span><b>2</b> Get code</span>→<span><b>3</b> Collect</span></span>
-            </div>
-        </div>
-        <div class="card pad track-box">
-            <label for="track-ref">Track an order</label>
-            <form th:action="@{/track}" method="get">
-                <input id="track-ref" class="input" name="ref" placeholder="NQ-2026-XXXXX" autocomplete="off" required
-                       pattern="[Nn][Qq]-\d{4}-[A-Za-z0-9]{5}" title="Order reference like NQ-2026-AB12C">
-                <button class="btn btn-primary" type="submit">Track</button>
-            </form>
-            <div class="recent-orders" data-recent-orders></div>
+        <h1>No Queue.<br><span>Just Order.</span></h1>
+        <p>Pre-order from the college canteen, get a pickup code, and collect your food when it's ready.</p>
+        <div class="hero-meta">
+            <span th:if="${canteenOpen}" class="pill pill-ok"><span class="dot"></span>
+                Open now · <span th:text="|${opensAt} – ${closesAt}|">08:00 – 18:00</span></span>
+            <span th:unless="${canteenOpen}" class="pill pill-warn"><span class="dot"></span>
+                Closed · opens at <span th:text="${opensAt}">08:00</span> · pre-orders welcome</span>
+            <span class="steps"><span><b>1</b> Order</span>→<span><b>2</b> Get code</span>→<span><b>3</b> Collect</span></span>
         </div>
     </section>
 
@@ -94,16 +83,15 @@
                 <div class="body">
                     <h3 th:text="${item.name}">Name</h3>
                     <p class="desc" th:text="${item.description}"></p>
-                    <span th:if="${!item.orderable}" class="stock out">Sold out</span>
-                    <span th:if="${item.orderable and item.availableQuantity <= 5}" class="stock low"
-                          th:text="|Only ${item.availableQuantity} left|"></span>
-                    <span th:if="${item.orderable and item.availableQuantity > 5}" class="stock muted">Available</span>
+                    <span th:if="${!item.orderable}" class="stock out" th:text="${item.available} ? 'Sold out' : 'Not available'">Sold out</span>
+                    <span th:if="${item.orderable}" class="stock muted">Available</span>
                     <div class="foot">
                         <span class="price" th:text="|₹${item.price}|">₹0</span>
                         <div data-cart-control>
                             <button th:if="${item.orderable}" class="btn btn-primary btn-sm" type="button"
                                     th:attr="data-add=${item.id}" th:aria-label="|Add ${item.name} to cart|">Add</button>
-                            <button th:unless="${item.orderable}" class="btn btn-sm" type="button" disabled>Sold out</button>
+                            <button th:unless="${item.orderable}" class="btn btn-sm" type="button" disabled
+                                    th:text="${item.available} ? 'Sold out' : 'Not available'">Sold out</button>
                         </div>
                     </div>
                 </div>

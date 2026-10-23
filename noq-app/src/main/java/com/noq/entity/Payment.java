@@ -10,13 +10,13 @@ import java.time.LocalDateTime;
 /**
  * INHERITANCE MAPPING demo.
  * <p>
- * Payment is abstract; the concrete kinds are {@link CashPayment} and {@link OnlinePayment}.
+ * Payment is abstract; the concrete kind used today is {@link CashPayment} (money taken at the counter).
  * With {@code InheritanceType.SINGLE_TABLE} Hibernate stores every subclass in ONE table called
  * {@code payment}. The extra column {@code payment_type} (the discriminator) tells Hibernate which
- * Java class to create when it reads a row: "CASH" -> CashPayment, "ONLINE" -> OnlinePayment.
- * Columns that belong to only one subclass (e.g. transaction_reference) are NULL for the other.
+ * Java class to create when it reads a row: "CASH" -> CashPayment. Adding another way to pay later means
+ * one more subclass with its own discriminator value - no new table.
  * <p>
- * Why SINGLE_TABLE? No joins, fastest queries, simplest schema. Trade-off: subclass columns must be nullable.
+ * Why SINGLE_TABLE? No joins, fastest queries, simplest schema. Trade-off: subclass-only columns must be nullable.
  */
 @Entity
 @Table(name = "payment")
@@ -35,7 +35,7 @@ public abstract class Payment {
     @Column(nullable = false, precision = 10, scale = 2)
     private BigDecimal amount;
 
-    /** PAID (successful) or FAILED for this single attempt. */
+    /** PAID when the counter takes the money. */
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, columnDefinition = "varchar(20)") // plain VARCHAR: no MySQL ENUM/CHECK, so a new enum value needs no ALTER TABLE
     private PaymentStatus status;
@@ -52,7 +52,7 @@ public abstract class Payment {
         this.status = status;
     }
 
-    /** The discriminator value, e.g. "CASH" or "ONLINE". */
+    /** The discriminator value, e.g. "CASH". */
     public abstract String getPaymentType();
 
     public Long getId() { return id; }

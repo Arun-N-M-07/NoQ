@@ -5,15 +5,15 @@
 ```mermaid
 flowchart LR
     subgraph Browser
-        C["Customer pages<br/>menu · cart · track · demo pay<br/>(Thymeleaf HTML + vanilla JS)"]
-        S["Staff pages<br/>order board · menu management"]
+        C["Customer pages<br/>menu · cart + order confirmation<br/>(Thymeleaf HTML + vanilla JS)"]
+        S["Kitchen page (availability, incoming orders)<br/>Staff page (ready orders, OTP, handover)"]
         P["Postman"]
     end
 
     subgraph APP["noq-app  (Spring Boot, port 8080)"]
         direction TB
         SEC["Spring Security filter chain<br/>form login · HTTP Basic · roles"]
-        MVC["@Controller<br/>HomeController · StaffController · StaffMenuController"]
+        MVC["@Controller<br/>HomeController · StaffController"]
         REST["@RestController<br/>Menu · Order · Payment · Demo"]
         ADV["@RestControllerAdvice<br/>GlobalExceptionHandler"]
         SVC["@Service (@Transactional)<br/>MenuService · OrderService · PaymentService<br/>PickupCodeService · NotificationClient"]
@@ -21,7 +21,6 @@ flowchart LR
         CACHE[("Caffeine cache<br/>menu · popularItems")]
         REPO["Spring Data JPA repositories<br/>+ HQL @Query"]
         HIB["Hibernate ORM<br/>(SessionFactory / Session)"]
-        GW["PaymentGateway<br/>MockPaymentGateway"]
     end
 
     DB[("MySQL 8<br/>noq_db")]
@@ -39,11 +38,10 @@ flowchart LR
     AOP -. wraps .-> SVC
     SVC <--> CACHE
     SVC --> REPO --> HIB --> DB
-    SVC --> GW
     SVC -- "RestClient POST (after commit)" --> NS
 ```
 
-**Monolith + one microservice.** The customer site, staff dashboard and REST API are one deployable
+**Monolith + one microservice.** The customer site, staff Orders page and REST API are one deployable
 Spring Boot application (a *modular monolith*). Notification sending is split out into a separate service with
 its own process, port and build, talking to the main app only through HTTP/JSON.
 
@@ -54,9 +52,8 @@ noq-app/src/main/java/com/noq
 ├── NoqApplication.java              @SpringBootApplication + @EnableCaching
 ├── aspect/LoggingAspect.java        AOP: timing + failure logging for every service method
 ├── controller/                      MVC page controllers (return template names)
-│   ├── HomeController.java          /  /cart  /track  /pay/{ref}
-│   ├── StaffController.java         /staff/login  /staff
-│   └── StaffMenuController.java     /staff/menu/** (forms with @Valid + BindingResult)
+│   ├── HomeController.java          /  /cart
+│   └── StaffController.java         /staff/login  /staff  /staff/kitchen
 ├── restcontroller/                  JSON API
 │   ├── MenuRestController.java      /api/menu/**
 │   ├── OrderRestController.java     /api/orders/**
@@ -64,27 +61,25 @@ noq-app/src/main/java/com/noq
 │   └── DemoRestController.java      /api/demo/** (viva demos)
 ├── service/
 │   ├── MenuService.java             menu CRUD, @Cacheable, cache eviction after commit
-│   ├── OrderService.java            checkout, status transitions, cancel, pickup, @Scheduled expiry
-│   ├── PaymentService.java          counter + simulated online payments
+│   ├── OrderService.java            checkout, status transitions, staff cancel, pickup
+│   ├── PaymentService.java          counter payments (CashPayment)
 │   ├── PickupCodeService.java       SecureRandom OTP, BCrypt hash, attempt limiter
-│   ├── PaymentGateway.java          seam for a real gateway
-│   ├── MockPaymentGateway.java      SIMULATED gateway
-│   ├── OrderReadyEvent.java         event published when an order becomes READY
+│   ├── OrderReadyEvent.java         event published when an order becomes READY_FOR_PICKUP
 │   ├── NotificationClient.java      RestClient call to the microservice (after commit)
 │   └── ConceptDemoService.java      SessionFactory/Session/Transaction + IoC container demo
 ├── repository/                      Spring Data JPA interfaces (2 HQL queries)
-├── entity/                          MenuItem, CustomerOrder, OrderItem, Payment(+Cash/Online), StaffUser
+├── entity/                          MenuItem, CustomerOrder, OrderItem, Payment(+CashPayment), StaffUser
 ├── dto/                             validated request/response records
 ├── enums/                           Category, OrderStatus, PaymentMethod, PaymentStatus, StaffRole
-├── exception/                       ApiException, ApiError, GlobalExceptionHandler, PageExceptionHandler
+├── exception/                       ApiException, ApiError, GlobalExceptionHandler
 └── security/                        SecurityConfig, StaffUserDetailsService
 
 noq-app/src/main/resources
 ├── application.properties           MySQL, JPA, cache, actuator, NoQ settings
 ├── application-h2.properties        optional in-memory profile (also used by tests)
 ├── data.sql                         sample menu + staff (INSERT IGNORE)
-├── templates/                       index, cart, track, pay, error, fragments, staff/*
-└── static/                          css/app.css, js/{app,menu,cart,track,pay,staff}.js, images/
+├── templates/                       index, cart, error, fragments, staff/*
+└── static/                          css/app.css, js/{app,menu,cart,staff,kitchen}.js, images/
 
 noq-notification-service/src/main/java/com/noq/notification
 ├── NotificationServiceApplication.java
@@ -108,7 +103,7 @@ erDiagram
         varchar image_url
         int available_quantity
         bit available "staff sold-out switch"
-        bit active "soft delete"
+        bit active "false = hidden from the menu"
         int popularity_count
         bigint version "optimistic lock"
     }
@@ -139,13 +134,11 @@ erDiagram
     PAYMENT {
         bigint id PK
         bigint order_id FK
-        varchar payment_type "discriminator: CASH | ONLINE"
+        varchar payment_type "discriminator: CASH"
         decimal amount
         varchar status
         datetime created_at
         varchar received_by "CASH only"
-        varchar transaction_reference "ONLINE only"
-        varchar gateway "ONLINE only"
     }
     STAFF_USER {
         bigint id PK
@@ -172,34 +165,26 @@ classDiagram
         <<@DiscriminatorValue CASH>>
         String receivedBy
     }
-    class OnlinePayment {
-        <<@DiscriminatorValue ONLINE>>
-        String transactionReference
-        String gateway
-    }
     Payment <|-- CashPayment
-    Payment <|-- OnlinePayment
 ```
 
-Both subclasses live in **one** `payment` table; Hibernate writes `payment_type = 'CASH'` or `'ONLINE'` and
-uses that column to decide which Java class to instantiate when reading.
+Rows live in **one** `payment` table; Hibernate writes `payment_type = 'CASH'` and uses that column to decide which
+Java class to instantiate when reading. Another way of paying would be one more subclass with its own discriminator value.
 
 ## 4. Order status life-cycle
 
 ```mermaid
 stateDiagram-v2
-    [*] --> PLACED : customer places order
-    PLACED --> CONFIRMED : staff accepts (ONLINE orders must be PAID)
-    PLACED --> CANCELLED : customer, staff, or unpaid ONLINE order after 15 min
-    CONFIRMED --> PREPARING : staff
-    CONFIRMED --> CANCELLED : staff
-    PREPARING --> READY : staff → notification service called
-    READY --> COMPLETED : staff verifies pickup OTP (order must be PAID)
-    COMPLETED --> [*]
+    [*] --> PREPARING : customer places order
+    PREPARING --> READY_FOR_PICKUP : Kitchen "Ready for Pickup" → notification service called
+    PREPARING --> CANCELLED : API only
+    READY_FOR_PICKUP --> COLLECTED : Staff verify OTP, then "Confirm handover" (order must be PAID)
+    COLLECTED --> [*]
     CANCELLED --> [*] : stock restored, PAID → REFUNDED
 ```
 
-Payment status is separate: `PENDING → PAID` (or `FAILED → PAID` after a retry), and `PAID → REFUNDED` when a paid
+The Kitchen page lists PREPARING orders; the Staff page lists READY_FOR_PICKUP orders.
+Payment status is separate: `PENDING → PAID` (recorded at the counter when staff verify a correct OTP), and `PAID → REFUNDED` when a paid
 order is cancelled.
 
 ## 5. Request flow — placing an order
@@ -217,14 +202,14 @@ sequenceDiagram
     participant DB as MySQL
 
     U->>JS: click "Place order"
-    JS->>F: POST /api/orders {items:[{menuItemId,quantity}], paymentMethod, idempotencyKey}
+    JS->>F: POST /api/orders {items:[{menuItemId,quantity}], idempotencyKey}
     F->>RC: permitted (public endpoint)
     RC->>RC: @Valid → 400 if invalid
     RC->>A: placeOrder(request)
     A->>OS: begin transaction, start timer
     OS->>R: findByIdempotencyKey (duplicate? → 409)
     loop each item
-        OS->>R: findById(menuItemId)  (DB, never the cache)
+        OS->>R: findWithLockById(menuItemId)  SELECT … FOR UPDATE, ascending id order (DB, never the cache)
         OS->>OS: active? available? enough stock? (→ 400/409)
         OS->>OS: reduceStock(), popularity += qty, snapshot name & price
     end
@@ -235,26 +220,25 @@ sequenceDiagram
     A->>A: after commit: clear menu + popularItems caches
     A-->>RC: OrderPlacedResponse (contains the plain OTP once)
     RC-->>JS: 201 Created + Location
-    JS->>JS: store {ref, otp} in localStorage, clear cart
-    JS-->>U: redirect to /track (counter) or /pay/{ref} (online demo)
+    JS->>JS: keep the response in localStorage (so a refresh keeps the OTP), clear cart
+    JS-->>U: show the order confirmation: reference, items, total, payment status, pickup OTP
 ```
 
-## 6. Request flow — order becomes READY (microservice integration)
+## 6. Request flow — order becomes READY_FOR_PICKUP (microservice integration)
 
 ```mermaid
 sequenceDiagram
     autonumber
-    actor K as Kitchen staff
+    actor K as Staff (Orders page)
     participant RC as OrderRestController
     participant OS as OrderService
     participant DB as MySQL
     participant NC as NotificationClient
     participant NS as noq-notification-service :8081
-    actor C as Customer tracking page
 
-    K->>RC: PATCH /api/orders/{ref}/status {"status":"READY"}
-    RC->>OS: updateStatus(ref, READY)
-    OS->>OS: canMoveTo(READY)? else 409
+    K->>RC: PATCH /api/orders/{ref}/status {"status":"READY_FOR_PICKUP"}
+    RC->>OS: updateStatus(ref, READY_FOR_PICKUP)
+    OS->>OS: canMoveTo(READY_FOR_PICKUP)? else 409
     OS->>OS: publishEvent(OrderReadyEvent)
     OS->>DB: COMMIT
     Note over NC: @TransactionalEventListener(AFTER_COMMIT)<br/>runs only if the commit succeeded
@@ -262,12 +246,13 @@ sequenceDiagram
     alt service up
         NS-->>NC: 201 {status: "RECEIVED"}
     else service down / timeout (2 s)
-        NC->>NC: log warning — order stays READY
+        NC->>NC: log warning — order stays READY_FOR_PICKUP
     end
-    RC-->>K: 200 order JSON
-    loop every 5 s
-        C->>RC: GET /api/orders/{ref}/status
-        RC-->>C: {"status":"READY"} → "Your order is ready!"
+    RC-->>K: 200 order JSON (the order moves from the Kitchen list to the Staff page)
+    actor C as Customer confirmation (cart.js)
+    loop every 5 s while open, until COLLECTED/CANCELLED
+        C->>RC: GET /api/orders/{ref} + X-Pickup-Otp
+        RC-->>C: {"status":"READY_FOR_PICKUP", ...} (persisted state)
     end
 ```
 
@@ -303,12 +288,13 @@ sequenceDiagram
 
 | Path | Who |
 |---|---|
-| `/`, `/cart`, `/track`, `/pay/*`, static files, `/actuator/health` | everyone |
+| `/`, `/cart`, static files, `/actuator/health` | everyone |
 | `GET /api/menu/**` | everyone |
-| `POST /api/orders`, `GET /api/orders/{ref}/status` | everyone |
-| `GET /api/orders/{ref}`, `POST .../cancel`, `POST .../payments/mock-online` | everyone, but the **service** checks the `X-Pickup-Otp` header (or staff login) |
-| `GET /api/orders`, `PATCH .../status`, `POST .../verify-pickup`, `POST .../payments/counter-confirmation`, `/api/demo/**`, `/actuator/**` | STAFF (ADMIN includes STAFF) |
-| `POST/PUT/PATCH/DELETE /api/menu/**`, `/staff/menu/**` | ADMIN |
-| `/staff/**` | STAFF |
+| `POST /api/orders` | everyone |
+| `GET /api/orders/{ref}` | everyone, but the **service** checks the `X-Pickup-Otp` header (or staff login) |
+| `/staff/kitchen`, `PATCH /api/menu/{id}/availability`, `PATCH /api/orders/{ref}/status` | KITCHEN |
+| `GET /api/orders` | KITCHEN or STAFF |
+| `POST .../verify-pickup`, `POST .../collect`, `POST .../payments/counter-confirmation`, `/api/demo/**`, `/actuator/**` | STAFF |
+| `/staff` | KITCHEN or STAFF (redirects the kitchen to `/staff/kitchen`) |
 
 Unauthenticated API calls get **401** JSON, wrong role gets **403** JSON; browser pages redirect to `/staff/login`.

@@ -39,7 +39,4 @@ public interface MenuItemRepository extends JpaRepository<MenuItem, Long> {
             where m.active = true and m.available = true and m.availableQuantity > 0
             order by m.popularityCount desc, m.id asc""")
     List<MenuItem> findPopularAvailable(Limit limit);
-
-    /** Used by the staff menu screen: every item, including inactive ones. */
-    List<MenuItem> findAllByOrderByActiveDescCategoryAscNameAsc();
 }

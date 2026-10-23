@@ -1,27 +1,22 @@
 package com.noq.enums;
 
 /**
- * Food-preparation status of an order (kept separate from {@link PaymentStatus}).
+ * Food status of an order (kept separate from {@link PaymentStatus}).
  * <pre>
- * PLACED -> CONFIRMED -> PREPARING -> READY -> COMPLETED
- *    \__________\______________________________> CANCELLED (only before preparation starts)
+ * PREPARING -> READY_FOR_PICKUP -> COLLECTED
+ *     \______> CANCELLED (only while still being prepared)
  * </pre>
+ * The kitchen moves an order to READY_FOR_PICKUP; staff move it to COLLECTED after checking the pickup OTP.
  */
 public enum OrderStatus {
-    PLACED, CONFIRMED, PREPARING, READY, COMPLETED, CANCELLED;
+    PREPARING, READY_FOR_PICKUP, COLLECTED, CANCELLED;
 
     /** The single place that defines which status changes are legal. */
     public boolean canMoveTo(OrderStatus next) {
         return switch (this) {
-            case PLACED -> next == CONFIRMED || next == CANCELLED;
-            case CONFIRMED -> next == PREPARING || next == CANCELLED;
-            case PREPARING -> next == READY;
-            case READY -> next == COMPLETED;
-            case COMPLETED, CANCELLED -> false;
+            case PREPARING -> next == READY_FOR_PICKUP || next == CANCELLED;
+            case READY_FOR_PICKUP -> next == COLLECTED;
+            case COLLECTED, CANCELLED -> false;
         };
-    }
-
-    public boolean isFinal() {
-        return this == COMPLETED || this == CANCELLED;
     }
 }

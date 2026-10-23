@@ -12,13 +12,14 @@ import java.net.URI;
 import java.util.List;
 
 /**
- * JSON API for orders. Customers identify themselves with the order reference + the pickup OTP,
- * sent in the {@code X-Pickup-Otp} header (headers are not stored in browser history or server URLs logs).
+ * JSON API for orders. Customers place an order and read it back with its pickup OTP; everything else is for STAFF
+ * (see SecurityConfig). Staff record counter payments in {@link PaymentRestController}.
  */
 @RestController
 @RequestMapping("/api/orders")
 public class OrderRestController {
 
+    /** Customers prove an order is theirs with its pickup OTP, sent in this header (headers are not stored in browser history or URL logs). */
     static final String OTP_HEADER = "X-Pickup-Otp";
 
     private final OrderService orderService;
@@ -34,48 +35,37 @@ public class OrderRestController {
         return ResponseEntity.created(URI.create("/api/orders/" + placed.orderReference())).body(placed);
     }
 
-    /** Full details: staff see any order; a customer must send the matching OTP header. */
+    /** Full details (never the OTP): staff see any order; a customer's confirmation screen must send the order's OTP header. */
     @GetMapping("/{orderReference}")
     public OrderResponse getOrder(@PathVariable String orderReference,
                                   @RequestHeader(value = OTP_HEADER, required = false) String otp,
                                   Authentication authentication) {
-        return isStaff(authentication)
-                ? orderService.getOrderForStaff(orderReference)
-                : orderService.getOrderForCustomer(orderReference, otp);
+        boolean staff = authentication != null && authentication.getAuthorities().stream()
+                .anyMatch(a -> "ROLE_STAFF".equals(a.getAuthority()));
+        return staff ? orderService.getOrder(orderReference) : orderService.getOrderForCustomer(orderReference, otp);
     }
 
-    /** Lightweight public status for polling every few seconds. */
-    @GetMapping("/{orderReference}/status")
-    public OrderStatusResponse getStatus(@PathVariable String orderReference) {
-        return orderService.getStatus(orderReference);
-    }
-
-    /** STAFF: GET /api/orders or GET /api/orders?status=PLACED */
+    /** STAFF: GET /api/orders?status=PREPARING (Kitchen page), ?status=READY_FOR_PICKUP (Staff page), or all open orders */
     @GetMapping
     public List<OrderResponse> listOrders(@RequestParam(required = false) OrderStatus status) {
         return orderService.listOrders(status);
     }
 
-    /** STAFF: {"status": "PREPARING"} */
+    /** STAFF (Kitchen page): {"status": "READY_FOR_PICKUP"} */
     @PatchMapping("/{orderReference}/status")
     public OrderResponse updateStatus(@PathVariable String orderReference, @Valid @RequestBody StatusUpdateRequest request) {
         return orderService.updateStatus(orderReference, request.status());
     }
 
-    /** STAFF: {"otp": "123456"} - completes a READY, PAID order exactly once. */
+    /** STAFF: {"otp": "123456"} - checks the OTP of a READY_FOR_PICKUP order; changes nothing. */
     @PostMapping("/{orderReference}/verify-pickup")
     public OrderResponse verifyPickup(@PathVariable String orderReference, @Valid @RequestBody PickupRequest request) {
         return orderService.verifyPickup(orderReference, request.otp());
     }
 
-    /** CUSTOMER: cancel own order while it is still PLACED. */
-    @PostMapping("/{orderReference}/cancel")
-    public OrderResponse cancel(@PathVariable String orderReference, @RequestHeader(OTP_HEADER) String otp) {
-        return orderService.cancelByCustomer(orderReference, otp);
-    }
-
-    private static boolean isStaff(Authentication authentication) {
-        return authentication != null && authentication.getAuthorities().stream()
-                .anyMatch(a -> "ROLE_STAFF".equals(a.getAuthority()));
+    /** STAFF: {"otp": "123456"} - confirms the handover: checks the OTP again and saves COLLECTED, exactly once. */
+    @PostMapping("/{orderReference}/collect")
+    public OrderResponse collect(@PathVariable String orderReference, @Valid @RequestBody PickupRequest request) {
+        return orderService.collect(orderReference, request.otp());
     }
 }

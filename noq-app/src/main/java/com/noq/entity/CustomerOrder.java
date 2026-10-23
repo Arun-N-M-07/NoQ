@@ -35,11 +35,12 @@ public class CustomerOrder {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, columnDefinition = "varchar(20)") // plain VARCHAR: no MySQL ENUM/CHECK, so a new enum value needs no ALTER TABLE
-    private OrderStatus status = OrderStatus.PLACED;
+    private OrderStatus status = OrderStatus.PREPARING; // the kitchen starts on every new order
 
+    /** Always PAY_AT_COUNTER (the only payment option); kept so the existing NOT NULL column is still filled. */
     @Enumerated(EnumType.STRING)
     @Column(name = "payment_method", nullable = false, columnDefinition = "varchar(20)")
-    private PaymentMethod paymentMethod;
+    private PaymentMethod paymentMethod = PaymentMethod.PAY_AT_COUNTER;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "payment_status", nullable = false, columnDefinition = "varchar(20)")
@@ -97,8 +98,6 @@ public class CustomerOrder {
     public void setPickupOtpHash(String pickupOtpHash) { this.pickupOtpHash = pickupOtpHash; }
     public OrderStatus getStatus() { return status; }
     public void setStatus(OrderStatus status) { this.status = status; }
-    public PaymentMethod getPaymentMethod() { return paymentMethod; }
-    public void setPaymentMethod(PaymentMethod paymentMethod) { this.paymentMethod = paymentMethod; }
     public PaymentStatus getPaymentStatus() { return paymentStatus; }
     public void setPaymentStatus(PaymentStatus paymentStatus) { this.paymentStatus = paymentStatus; }
     public BigDecimal getSubtotal() { return subtotal; }

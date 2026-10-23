@@ -10,13 +10,21 @@ Split the topics between the three team members, but everyone should be able to 
 
 **Q: What problem does NoQ solve?**
 Long queues at the college canteen counter. Students order ahead from their phone, get a pickup code, and only
-come to the counter when the food is ready. Staff get an organised order board instead of shouted orders.
+come to the counter when the food is ready. Staff get one organised Orders list instead of shouted orders.
 
 **Q: Walk us through one order.**
 Menu page → cart in `localStorage` → `POST /api/orders` → `OrderService.placeOrder()` validates every item against
 the database, deducts stock, snapshots prices, generates reference + OTP, saves in one transaction → 201 with the
-OTP → tracking page polls status → staff move it CONFIRMED → PREPARING → READY (microservice notified) → staff mark
-paid → staff verify OTP → COMPLETED.
+OTP → the cart page shows the order confirmation (reference, items, total, payment status, OTP, current status) → on
+the Kitchen page the new order is PREPARING → the kitchen clicks *Ready for Pickup* → READY_FOR_PICKUP (microservice
+notified), so it moves to the Staff page → staff verify the customer's OTP (a correct OTP records the payment: "OTP verified. Food can be
+delivered.") and confirm the handover → COLLECTED. The customer's open confirmation re-reads the order every 5 s:
+PREPARING → READY FOR PICKUP → "Collected — enjoy your meal!".
+
+**Q: Why is there no order-tracking page?**
+To keep the project small: the customer only needs the confirmation screen (it is kept in `localStorage`, so a refresh
+keeps the pickup code) and comes to the counter with the code. While it is open it polls `GET /api/orders/{ref}` with
+the OTP header every 5 s, so it shows the real, saved status (Ready, Collected) without a separate page.
 
 **Q: Why don't you trust the price the browser sends?**
 Anyone can edit JavaScript or send a request from Postman. The request only contains item ids and quantities; prices
@@ -25,7 +33,7 @@ and totals come from the database. Our test sends a fake `"total": 1` and checks
 **Q: How do you stop two students buying the last samosa?**
 Checkout first locks the menu rows with `SELECT ... FOR UPDATE` (`@Lock(PESSIMISTIC_WRITE)`, in ascending id order), so
 buyers queue up; the second buyer then sees stock 0 and gets 409 "sold out". The same idea protects an order row: every
-action that changes an order (pay, confirm, cancel, pickup) locks that order first. Without it, MySQL/InnoDB deadlocked:
+action that changes an order (pay, status change, cancel, pickup) locks that order first. Without it, MySQL/InnoDB deadlocked:
 inserting `order_item` takes a shared lock on the `menu_item` row (foreign key check) and the later stock `UPDATE` needs
 an exclusive lock, so two buyers each waited for the other - MySQL killed one and the API answered 503. H2 does not
 behave like that, which is why the tests must also be run on MySQL. `@Version` stays as a safety net: Hibernate's update
@@ -35,15 +43,17 @@ is `UPDATE menu_item SET … , version = version + 1 WHERE id = ? AND version = 
 **Q: How is the pickup OTP kept secret?**
 Generated with `SecureRandom` (unpredictable), independent of the order number, stored only as a BCrypt hash (like a
 password), sent once in the 201 response, never in any list endpoint, never logged (the AOP aspect logs no arguments),
-and only kept in the customer's own browser. Public endpoints lock an order after 5 wrong codes.
+and only kept in the customer's own browser. The customer endpoint that needs it (reading the order back) locks an order after 5
+wrong codes; no response ever includes it.
 
-**Q: Is the online payment real?**
-No — it is clearly labelled a simulation. `MockPaymentGateway` returns success or failure based on the button pressed.
-No card/UPI data is collected. A real gateway would be another class implementing `PaymentGateway`.
+**Q: How does payment work?**
+Only at the counter: the customer pays cash or UPI when collecting, staff verify the OTP and only then is a `CashPayment` row
+saved (wrong OTP = no payment). The handover (`collect`) is refused until the order is PAID. There is no online payment, so no card/UPI data ever
+reaches NoQ.
 
 **Q: What happens if the notification service is down?**
-The order is already committed as READY before we call it (`@TransactionalEventListener(AFTER_COMMIT)`), the call has a
-2-second timeout, and failures are caught and logged. The customer still sees READY through polling. Limitation: the
+The order is already committed as READY_FOR_PICKUP before we call it (`@TransactionalEventListener(AFTER_COMMIT)`), the call has a
+2-second timeout, and failures are caught and logged. The Orders list still shows the order as Ready. Limitation: the
 notification is lost — a message broker with retries would fix that.
 
 ---
@@ -63,7 +73,7 @@ It combines `@Configuration`, `@EnableAutoConfiguration` and `@ComponentScan` �
 **Q: Explain MVC in your project.**
 - **Model** — data passed to the view (`model.addAttribute("menu", …)`) and the entities/DTOs behind it.
 - **View** — Thymeleaf templates in `templates/` (`index.html`).
-- **Controller** — `HomeController`, `StaffMenuController` receive requests and choose a view.
+- **Controller** — `HomeController`, `StaffController` receive requests and choose a view.
 
 **Q: Request lifecycle?**
 Browser → embedded Tomcat → Spring Security filter chain → `DispatcherServlet` → handler mapping finds
@@ -76,11 +86,11 @@ by Jackson instead of rendering a view.
 `@Controller` methods return view names (HTML). `@RestController` = `@Controller` + `@ResponseBody`: return values are
 written directly to the response as JSON.
 
-**Q: How does form validation work on the staff menu form?**
-`StaffMenuController.create(@Valid @ModelAttribute("form") MenuItemRequest form, BindingResult errors, …)`.
-Spring binds form fields to the object, runs Bean Validation annotations (`@NotBlank`, `@DecimalMin` …), puts
-failures in `BindingResult`; we re-show the form and `th:errors` prints messages. On success we redirect
-(Post/Redirect/Get) so refresh doesn't resubmit.
+**Q: How does validation work?**
+Request records carry Bean Validation annotations (`PlaceOrderRequest`: `@NotEmpty`, quantity `@Min(1) @Max(20)`;
+`PickupRequest`: `@Pattern("\\d{6}")`; `AvailabilityRequest`: `@NotNull`). `@Valid` on the controller parameter runs them;
+a failure throws `MethodArgumentNotValidException`, which `GlobalExceptionHandler` turns into **400** with one message
+per field. Business rules (stock, status, OTP) are checked again in the services.
 
 ### Dependency Injection & IoC
 **Q: What is IoC / DI?**
@@ -112,10 +122,10 @@ which Hibernate generated from these annotations.
 `CustomerOrder` 1—* `OrderItem` (cascade ALL, so saving the order saves its items), `OrderItem` *—1 `MenuItem`,
 `CustomerOrder` 1—* `Payment`. `FetchType.LAZY` on `@ManyToOne` avoids loading what we don't need.
 
-**Q: CRUD?** `MenuService.create` (save → INSERT), `getItem`/`getMenu` (SELECT), `update` (change a managed entity → Hibernate
-*dirty checking* issues UPDATE at commit, no `save()` needed), soft delete (`active = false`) instead of DELETE to keep history.
-
-**Q: Why soft delete?** Old `order_item` rows reference the menu item through a foreign key; deleting it would break history.
+**Q: CRUD?** Create: `orderRepository.save(order)` (INSERT order + items by cascade, payments by `CashPayment`). Read:
+`getMenu`/`getItem`/`findByStatusNewestFirst`. Update: `MenuService.updateAvailability` and status changes change a
+managed entity → Hibernate *dirty checking* issues UPDATE at commit, no `save()` needed. Delete: nothing is deleted -
+orders are history, and a dish is hidden with `active = false` (old `order_item` rows reference it by foreign key).
 
 **Q: N+1 problem?** Loading 100 orders then touching each order's items lazily would run 101 queries.
 `hibernate.default_batch_fetch_size=50` makes Hibernate load items for 50 orders per query.
@@ -133,14 +143,14 @@ Hibernate translates it to the database's SQL dialect. JPQL is the standard subs
    `select o from CustomerOrder o where o.status = :status order by o.createdAt desc` (named parameter `:status`)
 3. In `ConceptDemoService`: `select type(p), count(p) from Payment p group by type(p)` — uses the inheritance discriminator.
 
-Run them: home page popular strip / `GET /api/menu/popular`; dashboard filter chip / `GET /api/orders?status=PLACED`.
+Run them: home page popular strip / `GET /api/menu/popular`; `GET /api/orders?status=PREPARING` (Kitchen page) / `READY_FOR_PICKUP` (Staff page).
 
 ### Inheritance mapping
 **Q: Explain your inheritance mapping.**
 Abstract `Payment` with `@Inheritance(strategy = SINGLE_TABLE)` and `@DiscriminatorColumn(name = "payment_type")`.
-`CashPayment` (`@DiscriminatorValue("CASH")`, `receivedBy`) and `OnlinePayment` (`"ONLINE"`, `transactionReference`,
-`gateway`). All rows go into one `payment` table; Hibernate fills `payment_type` on insert and uses it to create the
-right subclass on read. Subclass-only columns are NULL for the other type.
+`CashPayment` (`@DiscriminatorValue("CASH")`, `receivedBy`). All rows go into one `payment` table; Hibernate fills
+`payment_type` on insert and uses it to create the right subclass on read. A new way to pay would just be another
+subclass with its own discriminator value (its own columns would be NULL for cash rows).
 
 **Q: Other strategies?**
 - `SINGLE_TABLE` — one table, fastest (no joins), nullable subclass columns. *Our choice.*
@@ -191,7 +201,7 @@ reads stock with `findById` inside the transaction.
 
 ### Spring Security (supporting topic)
 Form login for staff pages, HTTP Basic for Postman, BCrypt password hashes in `staff_user`, URL rules in
-`SecurityConfig` (STAFF vs ADMIN). Hiding a button is not security — the server checks every request. 401 = who are you?
+`SecurityConfig` (KITCHEN vs STAFF; customers need no login). Hiding a button is not security — the server checks every request. 401 = who are you?
 403 = I know you, but you're not allowed.
 
 ---
@@ -214,9 +224,9 @@ cacheable responses, layered system.
 |---|---|---|---|---|
 | GET | read | yes | yes | `GET /api/menu` |
 | POST | create / action | no | no | `POST /api/orders` → 201 |
-| PUT | replace whole resource | no | yes | `PUT /api/menu/{id}` |
+| PUT | replace whole resource | no | yes | not used in NoQ |
 | PATCH | partial update | no | not necessarily | `PATCH /api/orders/{ref}/status` |
-| DELETE | remove | no | yes | `DELETE /api/menu/{id}` (soft) → 204 |
+| DELETE | remove | no | yes | not used (nothing is deleted) |
 
 POST isn't idempotent, so we add an `idempotencyKey` to stop double-click duplicates.
 
@@ -305,16 +315,16 @@ They run on H2, so no MySQL is needed in CI.
 - *Why `BigDecimal`?* `0.1 + 0.2 != 0.3` in `double`; money must be exact.
 - *Why store item name/price on `OrderItem`?* So later menu edits don't change old bills.
 - *Why `@Enumerated(STRING)` not ORDINAL?* Reordering the enum would silently corrupt old data with ordinals.
-- *What if two staff click "Mark paid" together?* the order row is locked (`FOR UPDATE`) before it is changed, so the second request waits, then sees PAID and gets 409.
-- *Can a completed order go back to PREPARING?* No — `OrderStatus.canMoveTo()` returns false for every move out of COMPLETED/CANCELLED.
-- *Why polling and not WebSockets?* Simple, works everywhere, 5-second delay is fine for food. WebSockets/SSE would push instantly.
+- *What if two staff record the payment together?* the order row is locked (`FOR UPDATE`) before it is changed, so the second request waits, then sees PAID and gets 409.
+- *Can a collected order go back to PREPARING?* No — `OrderStatus.canMoveTo()` returns false for every move out of COLLECTED/CANCELLED.
+- *Why verify the OTP and then confirm separately?* Staff see "OTP verified" before handing over the food; the confirm call (`collect`) checks the OTP again on the server, so skipping step 1 never helps.
+- *Why polling (Orders list every 10 s, confirmation every 5 s) and not WebSockets?* Simple, works everywhere, a few seconds' delay is fine for food. WebSockets/SSE would push instantly.
+- *Why two simple lists?* The kitchen only needs orders to cook (one *Ready for Pickup* button each); the counter only needs ready orders (pay, OTP, handover). The server re-checks every transition (`OrderStatus.canMoveTo()`).
 - *Why is the order reference not the secret?* It's printed and shouted across the counter; the separate random OTP is the secret.
 - *Why is `pickupOtpHash` BCrypt and not SHA-256?* BCrypt is slow and salted, so a leaked database can't be reversed quickly.
-- *What happens if a student starts an online payment and walks away?* Stock was reserved at checkout. A `@Scheduled`
-  method (`OrderService.expireUnpaidOnlineOrders`, every minute) cancels unpaid ONLINE orders still PLACED after 15 minutes,
-  using the same `cancel()` method as staff, so stock comes back exactly once. A late payment is refused (409). If a payment
-  and the expiry hit the same order at the same instant, the `@Version` column lets only one commit.
-- *Can someone brute-force the 6-digit OTP?* Public endpoints allow 5 tries per order. The attempt is counted with an atomic
+- *What if a student orders and never comes?* Stock was reserved at checkout. A PREPARING order can be cancelled through
+  the API (`cancel()` returns the stock exactly once); a ready order stays on the Staff page.
+- *Can someone brute-force the 6-digit OTP?* The only public endpoint that checks it (reading the order back) allows 5 tries per order; pickup verification needs a staff login. The attempt is counted with an atomic
   `incrementAndGet()` **before** the slow BCrypt check, so 100 parallel guesses can't all get past the limit together
   (a test proves this; the first version of the code had exactly that bug).
 - *Why are enum columns `varchar(20)` (`columnDefinition`) and not MySQL `ENUM`?* Hibernate creates `ENUM(...)` or a

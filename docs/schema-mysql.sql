@@ -62,8 +62,6 @@ CREATE TABLE `payment` (
   `created_at` datetime(6) NOT NULL,
   `status` varchar(20) NOT NULL,
   `received_by` varchar(50) DEFAULT NULL,
-  `gateway` varchar(30) DEFAULT NULL,
-  `transaction_reference` varchar(40) DEFAULT NULL,
   `order_id` bigint NOT NULL,
   PRIMARY KEY (`id`),
   KEY `FKjb82tm1s8qg4mx6eqog4fsctj` (`order_id`),

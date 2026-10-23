@@ -12,31 +12,27 @@ class OrderStatusTest {
 
     @Test
     void happyPathTransitionsAreAllowed() {
-        assertTrue(PLACED.canMoveTo(CONFIRMED));
-        assertTrue(CONFIRMED.canMoveTo(PREPARING));
-        assertTrue(PREPARING.canMoveTo(READY));
-        assertTrue(READY.canMoveTo(COMPLETED));
+        assertTrue(PREPARING.canMoveTo(READY_FOR_PICKUP));
+        assertTrue(READY_FOR_PICKUP.canMoveTo(COLLECTED));
     }
 
     @Test
     void invalidTransitionsAreRejected() {
-        assertFalse(PLACED.canMoveTo(READY), "cannot skip steps");
-        assertFalse(COMPLETED.canMoveTo(PREPARING), "completed orders never go back");
-        assertFalse(PREPARING.canMoveTo(CANCELLED), "no cancelling once cooking started");
+        assertFalse(PREPARING.canMoveTo(COLLECTED), "cannot skip READY_FOR_PICKUP");
+        assertFalse(COLLECTED.canMoveTo(PREPARING), "collected orders never go back");
+        assertFalse(READY_FOR_PICKUP.canMoveTo(CANCELLED), "no cancelling once the food is ready");
         for (OrderStatus next : OrderStatus.values()) {
             assertFalse(CANCELLED.canMoveTo(next));
-            assertFalse(COMPLETED.canMoveTo(next));
+            assertFalse(COLLECTED.canMoveTo(next));
         }
     }
 
     @Test
     void completeTransitionMatrixIsExactlyTheDocumentedOne() {
         var allowed = java.util.Map.of(
-                PLACED, java.util.Set.of(CONFIRMED, CANCELLED),
-                CONFIRMED, java.util.Set.of(PREPARING, CANCELLED),
-                PREPARING, java.util.Set.of(READY),
-                READY, java.util.Set.of(COMPLETED),
-                COMPLETED, java.util.Set.<OrderStatus>of(),
+                PREPARING, java.util.Set.of(READY_FOR_PICKUP, CANCELLED),
+                READY_FOR_PICKUP, java.util.Set.of(COLLECTED),
+                COLLECTED, java.util.Set.<OrderStatus>of(),
                 CANCELLED, java.util.Set.<OrderStatus>of());
         for (OrderStatus from : OrderStatus.values()) {
             for (OrderStatus to : OrderStatus.values()) {

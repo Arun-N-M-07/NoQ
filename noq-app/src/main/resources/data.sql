@@ -29,8 +29,16 @@ INSERT IGNORE INTO menu_item (id, name, description, category, price, image_url,
 (22, 'Garden Salad Bowl', 'Seasonal vegetables, sprouts, paneer and lemon dressing.', 'MEALS', 80.00, 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=600&h=400&fit=crop', 15, FALSE, TRUE, 0, 0),
 (23, 'Chilli Paneer', 'Indo-Chinese paneer tossed with peppers and chilli sauce. (Seasonal - currently off the menu.)', 'SNACKS', 90.00, 'https://images.unsplash.com/photo-1645177628172-a94c1f96e6db?w=600&h=400&fit=crop', 20, TRUE, FALSE, 0, 0);
 
--- Demo staff logins (BCrypt hashes). admin / admin123 (ADMIN)   kitchen / kitchen123 (STAFF)
+-- Status names used by older versions -> current names, so their orders still load (no-op on a fresh database).
+UPDATE customer_order SET status = CASE status WHEN 'READY' THEN 'READY_FOR_PICKUP' WHEN 'COMPLETED' THEN 'COLLECTED' ELSE 'PREPARING' END
+WHERE status IN ('PLACED', 'CONFIRMED', 'READY', 'COMPLETED');
+
+-- Demo logins (BCrypt hashes). kitchen / kitchen123 (KITCHEN)   staff / staff123 (STAFF)
 -- Change these before any real use.
 INSERT IGNORE INTO staff_user (id, username, password_hash, role, active) VALUES
-(1, 'admin',   '$2a$10$TUbKoLcBp2gSUg7g1QX5s.84XReJwuacBFqrKDEtOiCCRfAWApOy2', 'ADMIN', TRUE),
-(2, 'kitchen', '$2a$10$BVhQzvUqDaZMeN45PjStPu3D38qQEA1zaY84qA.WEanYaVG4M0.w6', 'STAFF', TRUE);
+(2, 'kitchen', '$2a$10$BVhQzvUqDaZMeN45PjStPu3D38qQEA1zaY84qA.WEanYaVG4M0.w6', 'KITCHEN', TRUE),
+(3, 'staff',   '$2a$10$26L69.raB2nWHyHbxclmhuSSn1BcOEygWUCn6qfzCxSuwNQYbnEBS', 'STAFF', TRUE);
+-- Databases created by older versions: the demo kitchen login becomes KITCHEN, and the old admin login is switched
+-- off (kept, not deleted) because the ADMIN role no longer exists. No-op on a fresh database.
+UPDATE staff_user SET role = 'KITCHEN' WHERE username = 'kitchen' AND role = 'STAFF';
+UPDATE staff_user SET role = 'STAFF', active = FALSE WHERE role = 'ADMIN';

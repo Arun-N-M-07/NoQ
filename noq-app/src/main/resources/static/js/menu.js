@@ -69,14 +69,6 @@
   search.addEventListener('input', apply);
   sort.addEventListener('change', apply);
 
-  // "Your recent orders" chips (from this device only)
-  const recent = document.querySelector('[data-recent-orders]');
-  const mine = NoQ.orders.list().slice(0, 3);
-  if (mine.length) {
-    recent.innerHTML = '<span class="muted small">Your orders:</span>' + mine
-      .map(o => `<a class="pill pill-accent" href="/track?ref=${encodeURIComponent(o.ref)}">${NoQ.escapeHtml(o.ref)}</a>`).join('');
-  }
-
   renderControls();
   apply();
 })();

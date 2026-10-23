@@ -1,6 +1,5 @@
 package com.noq;
 
-import com.noq.dto.AvailabilityRequest;
 import com.noq.repository.MenuItemRepository;
 import com.noq.service.MenuService;
 import org.junit.jupiter.api.Test;
@@ -22,8 +21,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/** Menu REST API, validation, authorization, HQL query 1 and caching. Runs on the in-memory H2 profile. */
-@SpringBootTest(properties = {"noq.notification.base-url=http://localhost:1", "noq.orders.expiry-check-interval=PT24H"})
+/** Menu REST API, kitchen availability switch, logins/roles, HQL query 1 and caching. Runs on the in-memory H2 profile. */
+@SpringBootTest(properties = {"noq.notification.base-url=http://localhost:1"})
 @AutoConfigureMockMvc
 @ActiveProfiles("h2")
 class MenuApiTest {
@@ -33,9 +32,16 @@ class MenuApiTest {
     @Autowired MenuItemRepository menuItemRepository;
     @Autowired CacheManager cacheManager;
     @Autowired TransactionTemplate tx;
+    @Autowired com.noq.repository.CustomerOrderRepository orderRepository;
 
-    private static final String NEW_ITEM = """
-            {"name":"Test Vada Pav","description":"Test item","category":"SNACKS","price":25.50,"availableQuantity":10}""";
+    private static final org.springframework.test.web.servlet.request.RequestPostProcessor KITCHEN = user("kitchen").roles("KITCHEN");
+    private static final org.springframework.test.web.servlet.request.RequestPostProcessor STAFF = user("staff").roles("STAFF");
+
+    private org.springframework.test.web.servlet.ResultActions setAvailable(long id, String body,
+            org.springframework.test.web.servlet.request.RequestPostProcessor who) throws Exception {
+        var request = patch("/api/menu/" + id + "/availability").contentType(MediaType.APPLICATION_JSON).content(body);
+        return mvc.perform(who == null ? request : request.with(who));
+    }
 
     @Test
     void publicMenuShowsActiveItemsOnly() throws Exception {
@@ -56,6 +62,44 @@ class MenuApiTest {
     }
 
     @Test
+    void kitchenToggleAvailabilityIsSavedAndEnforcedByCheckout() throws Exception {
+        long id = 20; // Chocolate Donut
+        int stock = menuItemRepository.findById(id).orElseThrow().getAvailableQuantity();
+        String order = "{\"items\":[{\"menuItemId\":" + id + ",\"quantity\":1}]}";
+
+        setAvailable(id, "{\"available\":false}", KITCHEN).andExpect(status().isOk()).andExpect(jsonPath("$.available").value(false));
+        setAvailable(id, "{}", KITCHEN).andExpect(status().isBadRequest()).andExpect(jsonPath("$.fieldErrors.available").exists());
+        setAvailable(id, "{\"available\":true}", STAFF).andExpect(status().isForbidden());  // counter staff can't
+        setAvailable(id, "{\"available\":true}", null).andExpect(status().isUnauthorized()); // customers can't
+        mvc.perform(get("/api/menu/" + id)) // saved in the database, and the customer menu sees it
+                .andExpect(jsonPath("$.available").value(false))
+                .andExpect(jsonPath("$.orderable").value(false))
+                .andExpect(jsonPath("$.availableQuantity").value(stock));
+        mvc.perform(get("/")).andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.content()
+                .string(containsString("Not available")));
+
+        long ordersBefore = orderRepository.count();
+        mvc.perform(post("/api/orders").contentType(MediaType.APPLICATION_JSON).content(order)) // direct API call
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("Chocolate Donut is not available right now"));
+        assertThat(orderRepository.count()).as("no order saved").isEqualTo(ordersBefore);
+        assertThat(menuItemRepository.findById(id).orElseThrow().getAvailableQuantity()).as("no stock taken").isEqualTo(stock);
+
+        setAvailable(id, "{\"available\":true}", KITCHEN).andExpect(status().isOk());
+        mvc.perform(post("/api/orders").contentType(MediaType.APPLICATION_JSON).content(order)).andExpect(status().isCreated());
+    }
+
+    @Test
+    void kitchenPageHasExactlyTwoTabs() throws Exception {
+        mvc.perform(get("/staff/kitchen").with(KITCHEN))
+                .andExpect(status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.content().string(allOf(
+                        containsString(">Menu Availability<"), containsString(">Incoming Orders<"),
+                        containsString("data-availability"), containsString("data-mode=\"kitchen\""))));
+        mvc.perform(get("/staff/kitchen").with(STAFF)).andExpect(status().isForbidden());
+    }
+
+    @Test
     void soldOutItemIsNotOrderable() throws Exception {
         mvc.perform(get("/api/menu/16")) // Margherita Pizza: stock 0
                 .andExpect(status().isOk())
@@ -73,42 +117,37 @@ class MenuApiTest {
     }
 
     @Test
-    void menuChangesNeedAdmin() throws Exception {
-        mvc.perform(post("/api/menu").contentType(MediaType.APPLICATION_JSON).content(NEW_ITEM))
-                .andExpect(status().isUnauthorized());
-        mvc.perform(post("/api/menu").with(user("kitchen").roles("STAFF")).contentType(MediaType.APPLICATION_JSON).content(NEW_ITEM))
+    void realLoginsHaveExactlyTheirOwnRole() throws Exception {
+        // real BCrypt logins against the seeded staff_user table: kitchen / kitchen123 (KITCHEN), staff / staff123 (STAFF)
+        setAvailable(2, "{\"available\":true}", httpBasic("kitchen", "kitchen123")).andExpect(status().isOk());
+        mvc.perform(post("/api/orders/NQ-2026-AAAAA/payments/counter-confirmation").with(httpBasic("kitchen", "kitchen123")))
                 .andExpect(status().isForbidden());
-        // real BCrypt login against the seeded staff_user table
-        mvc.perform(post("/api/menu").with(httpBasic("admin", "admin123")).contentType(MediaType.APPLICATION_JSON).content(NEW_ITEM))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.name").value("Test Vada Pav"));
-        mvc.perform(post("/api/menu").with(httpBasic("admin", "wrong")).contentType(MediaType.APPLICATION_JSON).content(NEW_ITEM))
-                .andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/orders").param("status", "READY_FOR_PICKUP").with(httpBasic("staff", "staff123"))).andExpect(status().isOk());
+        setAvailable(2, "{\"available\":true}", httpBasic("staff", "staff123")).andExpect(status().isForbidden());
+        mvc.perform(get("/api/orders").with(httpBasic("staff", "wrong"))).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/orders").with(httpBasic("admin", "admin123"))).andExpect(status().isUnauthorized()); // no admin any more
+        // the menu can no longer be created, edited or deleted through the API
+        mvc.perform(post("/api/menu").with(STAFF).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"X\",\"category\":\"SNACKS\",\"price\":10}")).andExpect(status().is4xxClientError());
+        mvc.perform(delete("/api/menu/2").with(KITCHEN)).andExpect(status().isForbidden());
     }
 
     @Test
-    void invalidMenuItemIsRejectedWithFieldErrors() throws Exception {
-        mvc.perform(post("/api/menu").with(user("admin").roles("ADMIN", "STAFF")).contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"name\":\"\",\"price\":-5,\"availableQuantity\":-1}"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.fieldErrors.name").exists())
-                .andExpect(jsonPath("$.fieldErrors.price").exists())
-                .andExpect(jsonPath("$.fieldErrors.category").exists())
-                .andExpect(jsonPath("$.fieldErrors.availableQuantity").exists());
+    void staffLoginLandsOnTheirOwnPage() throws Exception {
+        mvc.perform(get("/staff").with(KITCHEN)).andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl("/staff/kitchen"));
+        mvc.perform(get("/staff").with(STAFF)).andExpect(status().isOk());
+        mvc.perform(get("/staff/menu").with(STAFF)).andExpect(status().isNotFound()); // the admin menu page is gone
     }
 
     @Test
-    void cacheIsFilledOnReadAndEvictedOnStaffUpdate() throws Exception {
+    void cacheIsFilledOnReadAndEvictedOnKitchenUpdate() throws Exception {
         var cache = cacheManager.getCache(MenuService.MENU_CACHE);
         cache.clear();
         menuService.getMenu(null);
         assertThat(cache.get("ALL")).as("first call stores the menu").isNotNull();
 
-        mvc.perform(patch("/api/menu/7/availability").with(user("admin").roles("ADMIN", "STAFF"))
-                        .contentType(MediaType.APPLICATION_JSON).content("{\"availableQuantity\":100}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.availableQuantity").value(100));
-        assertThat(cache.get("ALL")).as("staff update evicts the cache").isNull();
+        setAvailable(7, "{\"available\":true}", KITCHEN).andExpect(status().isOk()).andExpect(jsonPath("$.available").value(true));
+        assertThat(cache.get("ALL")).as("kitchen update evicts the cache").isNull();
     }
 
     @Test
@@ -116,47 +155,18 @@ class MenuApiTest {
         var cache = cacheManager.getCache(MenuService.MENU_CACHE);
         menuService.getMenu(null);
         tx.executeWithoutResult(t -> {
-            menuService.updateAvailability(19L, new AvailabilityRequest(77, null));
+            menuService.updateAvailability(19L, false);
             assertThat(cache.get("ALL")).as("still cached until the commit").isNotNull();
         });
         assertThat(cache.get("ALL")).as("evicted after the commit").isNull();
 
         menuService.getMenu(null);
         tx.executeWithoutResult(t -> {
-            menuService.updateAvailability(19L, new AvailabilityRequest(1, null));
+            menuService.updateAvailability(19L, true);
             t.setRollbackOnly();
         });
         assertThat(cache.get("ALL")).as("a rollback keeps the (still correct) cache").isNotNull();
-        assertThat(menuItemRepository.findById(19L).orElseThrow().getAvailableQuantity()).isEqualTo(77);
-    }
-
-    @Test
-    void staleMenuEditCannotRestoreSoldStock() throws Exception {
-        var admin = user("admin").roles("ADMIN", "STAFF");
-        String created = mvc.perform(post("/api/menu").with(admin).contentType(MediaType.APPLICATION_JSON)
-                .content("{\"name\":\"Stale Brownie\",\"category\":\"DESSERTS\",\"price\":30,\"availableQuantity\":10}"))
-                .andReturn().getResponse().getContentAsString();
-        int id = com.jayway.jsonpath.JsonPath.read(created, "$.id");
-        // staff opens the edit form (stock 10); meanwhile a customer buys 3
-        mvc.perform(post("/api/orders").contentType(MediaType.APPLICATION_JSON)
-                .content("{\"items\":[{\"menuItemId\":" + id + ",\"quantity\":3}],\"paymentMethod\":\"PAY_AT_COUNTER\"}"))
-                .andExpect(status().isCreated());
-        // the stale form is saved: new price, old stock 10
-        mvc.perform(put("/api/menu/" + id).with(admin).contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"name\":\"Stale Brownie\",\"category\":\"DESSERTS\",\"price\":35,\"availableQuantity\":10}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.price").value(35))
-                .andExpect(jsonPath("$.availableQuantity").value(7));
-    }
-
-    @Test
-    void deleteDeactivatesInsteadOfDeleting() throws Exception {
-        String body = mvc.perform(post("/api/menu").with(user("admin").roles("ADMIN", "STAFF"))
-                        .contentType(MediaType.APPLICATION_JSON).content(NEW_ITEM))
-                .andReturn().getResponse().getContentAsString();
-        Integer id = com.jayway.jsonpath.JsonPath.read(body, "$.id");
-        mvc.perform(delete("/api/menu/" + id).with(user("admin").roles("ADMIN", "STAFF")))
-                .andExpect(status().isNoContent());
-        assertThat(menuItemRepository.findById(id.longValue())).get().matches(m -> !m.isActive());
+        assertThat(menuItemRepository.findById(19L).orElseThrow().isAvailable()).isFalse();
+        menuService.updateAvailability(19L, true); // put the dish back on sale for other tests
     }
 }

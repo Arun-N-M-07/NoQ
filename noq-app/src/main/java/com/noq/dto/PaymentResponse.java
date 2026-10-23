@@ -9,6 +9,5 @@ public record PaymentResponse(
         String paymentType,
         PaymentStatus paymentStatus,
         BigDecimal amount,
-        String transactionReference,
         String message) {
 }

@@ -1,7 +1,5 @@
 package com.noq.service;
 
-import com.noq.dto.AvailabilityRequest;
-import com.noq.dto.MenuItemRequest;
 import com.noq.dto.MenuItemResponse;
 import com.noq.entity.MenuItem;
 import com.noq.enums.Category;
@@ -24,7 +22,7 @@ import java.util.List;
  * <p>
  * {@code @Cacheable}: the first call runs the method and stores the result in the Caffeine cache;
  * later calls with the same key return the stored list WITHOUT running the method (no SQL query).
- * {@link #evictMenuCaches()}: after the menu, stock or popularity changes, the cached lists are thrown away
+ * {@link #evictMenuCaches()}: after availability, stock or popularity changes, the cached lists are thrown away
  * AFTER the transaction commits, so the next read loads fresh data. Checkout never uses these cached lists -
  * it always reads stock from the database.
  */
@@ -33,7 +31,6 @@ public class MenuService {
 
     public static final String MENU_CACHE = "menu";
     public static final String POPULAR_CACHE = "popularItems";
-    private static final int MAX_STOCK = 10000;
 
     private static final Logger log = LoggerFactory.getLogger(MenuService.class);
 
@@ -68,61 +65,11 @@ public class MenuService {
         return MenuItemResponse.from(find(id));
     }
 
-    @Transactional(readOnly = true)
-    public List<MenuItemResponse> listAllForStaff() {
-        return menuItemRepository.findAllByOrderByActiveDescCategoryAscNameAsc().stream().map(MenuItemResponse::from).toList();
-    }
-
-    @Transactional(readOnly = true)
-    public MenuItemRequest getEditForm(Long id) {
-        return MenuItemRequest.from(find(id));
-    }
-
+    /** Kitchen page switch: false = "Not available" (still listed, greyed out, rejected at checkout). Stock is untouched. */
     @Transactional
-    public MenuItemResponse create(MenuItemRequest request) {
-        MenuItem item = new MenuItem();
-        request.applyTo(item);
-        item.setAvailableQuantity(request.getAvailableQuantity()); // starting stock of a NEW item
-        MenuItemResponse saved = MenuItemResponse.from(menuItemRepository.save(item));
-        evictMenuCaches();
-        return saved;
-    }
-
-    @Transactional
-    public MenuItemResponse update(Long id, MenuItemRequest request) {
+    public MenuItemResponse updateAvailability(Long id, boolean available) {
         MenuItem item = find(id);
-        request.applyTo(item); // managed entity: Hibernate writes the UPDATE automatically at commit ("dirty checking")
-        evictMenuCaches();
-        return MenuItemResponse.from(item);
-    }
-
-    @Transactional
-    public MenuItemResponse updateAvailability(Long id, AvailabilityRequest request) {
-        Integer newStock = request.availableQuantity();
-        Boolean newAvailable = request.available();
-        if (newStock == null && newAvailable == null) {
-            throw ApiException.badRequest("Send availableQuantity and/or available");
-        }
-        if (newStock != null && (newStock < 0 || newStock > MAX_STOCK)) {
-            throw ApiException.badRequest("Stock must be between 0 and " + MAX_STOCK);
-        }
-
-        MenuItem item = find(id);
-        if (newStock != null) {
-            item.setAvailableQuantity(newStock);
-        }
-        if (newAvailable != null) {
-            item.setAvailable(newAvailable);
-        }
-        evictMenuCaches();
-        return MenuItemResponse.from(item);
-    }
-
-    /** Soft delete / restore. Old orders keep pointing at the row, so history is never lost. */
-    @Transactional
-    public MenuItemResponse setActive(Long id, boolean active) {
-        MenuItem item = find(id);
-        item.setActive(active);
+        item.setAvailable(available); // managed entity: Hibernate writes the UPDATE at commit ("dirty checking")
         evictMenuCaches();
         return MenuItemResponse.from(item);
     }

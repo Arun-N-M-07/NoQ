@@ -4,8 +4,8 @@
  * the server re-checks every item, price and stock level when the order is placed.
  */
 const NoQ = (() => {
-  const CART_KEY = 'noq.cart';     // { "3": {id, name, price, qty, image, emoji, max} }
-  const ORDERS_KEY = 'noq.orders'; // [ {ref, otp, at} ] - only on THIS device, so only the customer sees the OTP
+  const CART_KEY = 'noq.cart';            // { "3": {id, name, price, qty, image, emoji, max} }
+  const LAST_ORDER_KEY = 'noq.lastOrder'; // the confirmation (incl. pickup OTP) of the last order - only on THIS device
 
   function read(key, fallback) {
     try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; }
@@ -38,14 +38,10 @@ const NoQ = (() => {
     total() { return Object.values(this.all()).reduce((sum, l) => sum + l.qty * Number(l.price), 0); }
   };
 
-  const orders = {
-    list: () => read(ORDERS_KEY, []),
-    remember(ref, otp) {
-      const list = this.list().filter(o => o.ref !== ref);
-      list.unshift({ ref, otp, at: Date.now() });
-      write(ORDERS_KEY, list.slice(0, 10));
-    },
-    otpFor(ref) { return this.list().find(o => o.ref === ref)?.otp ?? null; }
+  // Kept so a page refresh does not lose the pickup code (the server stores only its hash and can't show it again).
+  const lastOrder = {
+    get: () => read(LAST_ORDER_KEY, null),
+    save: order => write(LAST_ORDER_KEY, order)
   };
 
   function money(value) {
@@ -124,5 +120,5 @@ const NoQ = (() => {
 
   document.addEventListener('DOMContentLoaded', updateCartBadges);
 
-  return { cart, orders, money, toast, api, randomKey, escapeHtml, thumb, updateCartBadges };
+  return { cart, lastOrder, money, toast, api, randomKey, escapeHtml, thumb, updateCartBadges };
 })();

@@ -3,33 +3,30 @@ package com.noq.controller;
 import com.noq.dto.MenuItemResponse;
 import com.noq.enums.Category;
 import com.noq.service.MenuService;
-import com.noq.service.OrderService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
 
 import java.time.LocalTime;
 import java.util.List;
 
 /**
- * Customer pages (Spring MVC + Thymeleaf).
+ * Customer pages (Spring MVC + Thymeleaf): the menu and the cart. The cart page also shows the order
+ * confirmation after checkout (rendered by cart.js from the POST /api/orders response).
  * Flow: browser -> DispatcherServlet -> this @Controller -> MenuService (cache/DB) -> Model -> Thymeleaf template -> HTML.
  */
 @Controller
 public class HomeController {
 
     private final MenuService menuService;
-    private final OrderService orderService;
     private final LocalTime opensAt;
     private final LocalTime closesAt;
 
-    public HomeController(MenuService menuService, OrderService orderService,
+    public HomeController(MenuService menuService,
                           @Value("${noq.canteen.opens-at:08:00}") String opensAt,
                           @Value("${noq.canteen.closes-at:18:00}") String closesAt) {
         this.menuService = menuService;
-        this.orderService = orderService;
         this.opensAt = LocalTime.parse(opensAt);
         this.closesAt = LocalTime.parse(closesAt);
     }
@@ -51,17 +48,5 @@ public class HomeController {
     @GetMapping("/cart")
     public String cart() {
         return "cart";
-    }
-
-    @GetMapping("/track")
-    public String track() {
-        return "track";
-    }
-
-    /** SIMULATED online payment page. Amount comes from the server, not the browser. */
-    @GetMapping("/pay/{orderReference}")
-    public String pay(@PathVariable String orderReference, Model model) {
-        model.addAttribute("order", orderService.getStatus(orderReference));
-        return "pay";
     }
 }

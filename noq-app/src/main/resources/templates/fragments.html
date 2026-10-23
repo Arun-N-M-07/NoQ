@@ -18,7 +18,6 @@
             <span><span class="brand-name">NoQ</span><span class="brand-sub">No Queue. Just Order.</span></span>
         </a>
         <nav class="nav" aria-label="Main">
-            <a th:href="@{/track}">Track</a>
             <a class="cart-link" th:href="@{/cart}" aria-label="Cart">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="20" r="1.5"/><circle cx="18" cy="20" r="1.5"/><path d="M3 4h2l2.4 11.2a2 2 0 0 0 2 1.6h8.1a2 2 0 0 0 2-1.5L21 8H6.2"/></svg>
                 <span class="badge-count" data-cart-count>0</span>
@@ -31,12 +30,11 @@
     <div class="container">
         <a class="brand" th:href="@{/staff}">
             <span class="brand-mark">Q</span>
-            <span><span class="brand-name">NoQ</span><span class="brand-sub" style="color:#cfc6ba">Kitchen &amp; Counter</span></span>
+            <span><span class="brand-name">NoQ</span><span class="brand-sub" style="color:#cfc6ba">Staff</span></span>
         </a>
         <nav class="nav" aria-label="Staff">
-            <a th:href="@{/staff}" th:attr="aria-current=${active == 'orders'} ? 'page' : null">Orders</a>
-            <a sec:authorize="hasRole('ADMIN')" th:href="@{/staff/menu}"
-               th:attr="aria-current=${active == 'menu'} ? 'page' : null">Menu</a>
+            <a sec:authorize="hasRole('STAFF')" th:href="@{/staff}" th:attr="aria-current=${active == 'orders'} ? 'page' : null">Orders</a>
+            <a sec:authorize="hasRole('KITCHEN')" th:href="@{/staff/kitchen}" th:attr="aria-current=${active == 'kitchen'} ? 'page' : null">Kitchen</a>
             <form th:action="@{/staff/logout}" method="post" class="inline-form">
                 <button class="link" type="submit">Log out <span class="small" sec:authentication="name"></span></button>
             </form>
