@@ -10,7 +10,7 @@ Split the topics between the three team members, but everyone should be able to 
 
 **Q: What problem does NoQ solve?**
 Long queues at the college canteen counter. Students order ahead from their phone, get a pickup code, and only
-come to the counter when the food is ready. Staff get one organised Orders list instead of shouted orders.
+come to the counter when the food is ready. The kitchen and the counter each get one short list instead of shouted orders.
 
 **Q: Walk us through one order.**
 Menu page → cart in `localStorage` → `POST /api/orders` → `OrderService.placeOrder()` validates every item against
@@ -53,7 +53,7 @@ reaches NoQ.
 
 **Q: What happens if the notification service is down?**
 The order is already committed as READY_FOR_PICKUP before we call it (`@TransactionalEventListener(AFTER_COMMIT)`), the call has a
-2-second timeout, and failures are caught and logged. The Orders list still shows the order as Ready. Limitation: the
+2-second timeout, and failures are caught and logged. The Staff page still lists the order as ready. Limitation: the
 notification is lost — a message broker with retries would fix that.
 
 ---
@@ -318,7 +318,7 @@ They run on H2, so no MySQL is needed in CI.
 - *What if two staff record the payment together?* the order row is locked (`FOR UPDATE`) before it is changed, so the second request waits, then sees PAID and gets 409.
 - *Can a collected order go back to PREPARING?* No — `OrderStatus.canMoveTo()` returns false for every move out of COLLECTED/CANCELLED.
 - *Why verify the OTP and then confirm separately?* Staff see "OTP verified" before handing over the food; the confirm call (`collect`) checks the OTP again on the server, so skipping step 1 never helps.
-- *Why polling (Orders list every 10 s, confirmation every 5 s) and not WebSockets?* Simple, works everywhere, a few seconds' delay is fine for food. WebSockets/SSE would push instantly.
+- *Why polling (Kitchen and Staff lists every 10 s, confirmation every 5 s) and not WebSockets?* Simple, works everywhere, a few seconds' delay is fine for food. WebSockets/SSE would push instantly.
 - *Why two simple lists?* The kitchen only needs orders to cook (one *Ready for Pickup* button each); the counter only needs ready orders (pay, OTP, handover). The server re-checks every transition (`OrderStatus.canMoveTo()`).
 - *Why is the order reference not the secret?* It's printed and shouted across the counter; the separate random OTP is the secret.
 - *Why is `pickupOtpHash` BCrypt and not SHA-256?* BCrypt is slow and salted, so a leaked database can't be reversed quickly.

@@ -1,5 +1,7 @@
 # NoQ — Architecture
 
+Static PNG versions of the main diagrams (runtime architecture, request flow, workflows, order life-cycle, ER diagram, payment inheritance, notification sequence) are in [`diagrams/`](diagrams/). They are the same figures used in the project report.
+
 ## 1. System overview
 
 ```mermaid
@@ -41,7 +43,7 @@ flowchart LR
     SVC -- "RestClient POST (after commit)" --> NS
 ```
 
-**Monolith + one microservice.** The customer site, staff Orders page and REST API are one deployable
+**Monolith + one microservice.** The customer site, the Kitchen and Staff pages and the REST API are one deployable
 Spring Boot application (a *modular monolith*). Notification sending is split out into a separate service with
 its own process, port and build, talking to the main app only through HTTP/JSON.
 
@@ -60,8 +62,8 @@ noq-app/src/main/java/com/noq
 │   ├── PaymentRestController.java   /api/orders/{ref}/payments/**
 │   └── DemoRestController.java      /api/demo/** (viva demos)
 ├── service/
-│   ├── MenuService.java             menu CRUD, @Cacheable, cache eviction after commit
-│   ├── OrderService.java            checkout, status transitions, staff cancel, pickup
+│   ├── MenuService.java             menu reads, Kitchen availability switch, @Cacheable, cache eviction after commit
+│   ├── OrderService.java            checkout, status transitions, cancel (API), OTP check and handover
 │   ├── PaymentService.java          counter payments (CashPayment)
 │   ├── PickupCodeService.java       SecureRandom OTP, BCrypt hash, attempt limiter
 │   ├── OrderReadyEvent.java         event published when an order becomes READY_FOR_PICKUP
@@ -102,7 +104,7 @@ erDiagram
         decimal price
         varchar image_url
         int available_quantity
-        bit available "staff sold-out switch"
+        bit available "Kitchen Available / Not available switch"
         bit active "false = hidden from the menu"
         int popularity_count
         bigint version "optimistic lock"
@@ -229,7 +231,7 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     autonumber
-    actor K as Staff (Orders page)
+    actor K as Kitchen (Kitchen page)
     participant RC as OrderRestController
     participant OS as OrderService
     participant DB as MySQL

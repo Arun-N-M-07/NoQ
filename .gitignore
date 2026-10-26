@@ -21,6 +21,10 @@ application-local.properties
 *.iml
 .vscode/
 
+# Database files (H2 file mode)
+*.mv.db
+*.trace.db
+
 # OS / logs
 .DS_Store
 *.log

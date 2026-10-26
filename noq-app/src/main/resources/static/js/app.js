@@ -120,5 +120,5 @@ const NoQ = (() => {
 
   document.addEventListener('DOMContentLoaded', updateCartBadges);
 
-  return { cart, lastOrder, money, toast, api, randomKey, escapeHtml, thumb, updateCartBadges };
+  return { cart, lastOrder, money, toast, api, randomKey, escapeHtml, thumb };
 })();

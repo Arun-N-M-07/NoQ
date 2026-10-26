@@ -63,7 +63,7 @@ Follow `NQ-2026-DEBCE` from the first click to the moment the food is handed ove
 ### Web layer
 | Class | Notes |
 |---|---|
-| `HomeController` | Customer pages (menu, cart); computes "open now" from configured hours. |
+| `HomeController` | Customer pages: the menu (served from the cache) and the cart. |
 | `StaffController` | Login page; `/staff` sends the kitchen to the Kitchen page and counter staff to the Staff page. |
 | `MenuRestController`, `OrderRestController`, `PaymentRestController`, `DemoRestController` | JSON endpoints, correct status codes (201 + `Location`, 204), `@Valid` request bodies. |
 | `GlobalExceptionHandler` | `@RestControllerAdvice`: turns every exception into the `ApiError` JSON shape with the right status. |
@@ -82,10 +82,10 @@ Follow `NQ-2026-DEBCE` from the first click to the moment the food is handed ove
 | `templates/fragments.html` | Shared `<head>`, customer header (cart badge), staff header, footer. |
 | `templates/index.html` | "Canteen Menu" title, filter/search/sort, menu cards. |
 | `templates/cart.html`, `error.html` | Checkout (pay at counter), then the order confirmation with the OTP card and live status; friendly errors. |
-| `templates/staff/*.html` | Login, Orders list, Kitchen (two tabs), menu table, add/edit form with server-side error messages. |
+| `templates/staff/*.html` | Login, the Staff page (ready orders) and the Kitchen page (two tabs). |
 | `static/js/app.js` | Cart and last order confirmation in `localStorage`, `api()` fetch wrapper, toast, image fallback. |
 | `static/js/menu.js`, `cart.js`, `staff.js`, `kitchen.js` | One small script per page; the Kitchen page reuses `staff.js` read-only for Incoming Orders and adds `kitchen.js` for the tabs and availability toggles. |
-| `static/css/app.css` | Design tokens (warm neutral + saffron accent), responsive grid, staff Orders list. |
+| `static/css/app.css` | Design tokens (warm off-white, charcoal text, green for success), compact menu rows, staff and kitchen order list. |
 
 ### Microservice
 | Class | Notes |
@@ -97,6 +97,6 @@ Follow `NQ-2026-DEBCE` from the first click to the moment the food is handed ove
 | Test | Covers |
 |---|---|
 | `OrderStatusTest` | Allowed / forbidden status transitions (plain JUnit). |
-| `MenuApiTest` | Menu retrieval, category filter, sold-out flag, Kitchen availability toggle (only KITCHEN may flip it; saved; customer menu shows "Not available"; direct order rejected without stock change or order row), Kitchen page has two tabs, HQL popular query, 401/403/201 authorization with real BCrypt login, validation errors, cache fill + eviction, eviction only after commit (not on rollback), soft delete. |
-| `OrderApiTest` | Order creation, server-side totals, stock & popularity, invalid orders (400/409), duplicate submission, full counter flow incl. payment and pickup, only counter payment exists (online endpoint closed), cancellation restores stock, customer reads own order only with the OTP (never sees it), persisted COMPLETED visible to the customer, staff page is one list, OTP lockout on the customer read, tracking/payment pages removed, staff authorization, **concurrent last-item race**, Hibernate & Spring demos. Also: repeated cancellation, cancelled orders can't be paid/prepared/collected, double "Mark paid", cancel-vs-payment race, 20 parallel OTP guesses. |
+| `MenuApiTest` | Menu retrieval, category filter, sold-out flag, Kitchen availability toggle (only KITCHEN may flip it; saved; customer menu shows "Not available"; direct order rejected without stock change or order row), Kitchen page has two tabs, HQL popular query, real BCrypt logins (kitchen and staff each get only their own role; the old admin login is rejected), validation errors, cache fill + eviction, eviction only after commit (not on rollback). |
+| `OrderApiTest` | Order creation, server-side totals, stock & popularity, invalid orders (400/409), duplicate submission, full counter flow incl. payment and pickup, only counter payment exists (online endpoint closed), cancellation restores stock, customer reads own order only with the OTP (never sees it), persisted COLLECTED visible to the customer, staff page is one list, OTP lockout on the customer read, tracking/payment pages removed, staff authorization, **concurrent last-item race**, Hibernate & Spring demos. Also: repeated cancellation, cancelled orders can't be paid/prepared/collected, two staff recording the same payment, cancel-vs-payment race, 20 parallel OTP guesses. |
 | `NotificationControllerTest` | Microservice accepts valid events, rejects invalid ones. |

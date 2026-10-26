@@ -1,5 +1,8 @@
--- NoQ database schema, dumped from a real MySQL 8.4.9 server after Hibernate created it
--- from the @Entity classes (spring.jpa.hibernate.ddl-auto=update), so it matches the Java code.
+-- NoQ database schema. It matches the @Entity classes of the final version
+-- (Hibernate creates these tables itself with spring.jpa.hibernate.ddl-auto=update).
+-- History: the file was first dumped from a real MySQL 8.4.9 server for an earlier version; when online payment was
+-- removed, the two columns payment.gateway and payment.transaction_reference were deleted from it BY HAND. It has not
+-- been dumped again from a fresh MySQL run of the final version.
 -- Enum fields are plain VARCHAR(20) (columnDefinition), not MySQL ENUM or CHECK constraints, so adding
 -- an enum value in Java never needs an ALTER TABLE.
 -- The application creates these tables itself; this file is for the report and for manual setup:

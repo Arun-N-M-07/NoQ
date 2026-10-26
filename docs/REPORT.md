@@ -12,10 +12,9 @@ Guide: `<Faculty name>` · Department of Information Technology · `<College>` �
 College canteens get long queues at peak hours: students wait to order, wait to pay and wait again to collect.
 **NoQ** ("No Queue") is a web application that lets students browse the live canteen menu on any device, pre-order,
 pay at the counter, and receive an order reference plus a secret six-digit pickup
-OTP on an order-confirmation screen. Canteen staff use one Orders list to accept orders,
-mark them ready, record counter payments and verify pickup codes. The open confirmation screen shows the order's current status. The system is built with Java 21, Spring Boot 3.5 (Spring MVC, Spring Data
+OTP on an order-confirmation screen. The kitchen marks orders ready and switches dishes Available / Not available; counter staff verify the pickup code (which records the counter payment) and hand the food over. The open confirmation screen shows the order's current status. The system is built with Java 21, Spring Boot 3.5 (Spring MVC, Spring Data
 JPA with Hibernate, Spring Security, Spring Cache with Caffeine, Spring AOP), Thymeleaf, vanilla JavaScript and MySQL 8,
-exposes a versioned REST API tested with Postman, and integrates with a separate Spring Boot notification microservice
+exposes a REST API tested with Postman, and integrates with a separate Spring Boot notification microservice
 over HTTP. 32 automated tests and a 35-request Postman collection verify the behaviour.
 
 ## 1. Introduction
@@ -42,7 +41,7 @@ Out of scope: online payment, customer accounts, SMS/e-mail delivery, multi-cant
 ### 2.1 Functional
 | ID | Requirement |
 |---|---|
-| F1 | Display menu with categories, images, prices, descriptions, availability; popular items |
+| F1 | Display menu with categories, images, prices, descriptions and availability (popular items through the API and the *Most popular* sort) |
 | F2 | Filter by category, search, sort; add/update/remove cart items; see subtotal and total |
 | F3 | Place order with payment method; server validates and deducts stock transactionally |
 | F4 | Show an order confirmation: unique order reference, items, total, payment status and pickup OTP |
@@ -101,7 +100,7 @@ paid order becomes REFUNDED). The kitchen sets READY_FOR_PICKUP; COLLECTED is re
 followed by the counter payment and the staff's handover confirmation.
 
 ### 3.4 Modules
-1. **Menu module** — browsing, caching, popularity, staff management.
+1. **Menu module** — browsing, caching, popularity, the Kitchen availability switch.
 2. **Order module** — checkout, stock control, reference/OTP, status transitions, cancellation, pickup.
 3. **Payment module** — counter payment, inheritance-mapped payment records.
 4. **Staff module** — login, KITCHEN/STAFF roles, Kitchen page, Staff page.
@@ -130,9 +129,9 @@ JUnit 5 + MockMvc · HTML5/CSS3/vanilla JS · Maven 3.9 · Git.
 - **Notifications:** `OrderReadyEvent` + `@TransactionalEventListener(AFTER_COMMIT)` → `RestClient` POST with 2-second
   timeouts; failures logged without affecting the order.
 - **Security:** form login (pages), HTTP Basic (API clients), JSON 401/403, BCrypt passwords, KITCHEN vs STAFF roles.
-- **UI:** mobile-first CSS (warm neutral palette, saffron accent), menu filter/search/sort, cart in `localStorage`,
+- **UI:** mobile-first CSS (warm off-white palette, charcoal text, green for success), menu filter/search/sort, cart in `localStorage`,
   order confirmation kept on the device (so a refresh keeps the pickup code) that re-reads its status every 5 s,
-  10-second Orders list refresh, emoji
+  10-second refresh of the Kitchen and Staff lists, emoji
   fallback for missing images.
 
 ### 4.3 Unit IV concept demonstrations
@@ -152,7 +151,7 @@ JUnit 5 + MockMvc · HTML5/CSS3/vanilla JS · Maven 3.9 · Git.
 
 | Concept | Implementation |
 |---|---|
-| REST API | 18 endpoints under `/api` with GET, POST, PUT, PATCH, DELETE ([`API.md`](API.md)) |
+| REST API | 13 endpoints under `/api` using GET, POST and PATCH ([`API.md`](API.md)); PUT and DELETE are explained as concepts only |
 | Status codes | 200, 201, 204, 400, 401, 403, 404, 409, 503 |
 | Validation & errors | `@Valid` DTOs, `GlobalExceptionHandler`, uniform `ApiError` JSON |
 | JSON | Jackson serialisation of DTO records |
@@ -212,7 +211,7 @@ two services on known ports, so NoQ does not use them.
 | Suite | Tests |
 |---|---|
 | `OrderStatusTest` (unit) | valid transitions; invalid transitions incl. completed → preparing |
-| `MenuApiTest` (MockMvc, H2) | public menu hides inactive items and internal fields; category filter + bad category 400; sold-out item; HQL popular ordering; 401/403/201 with real BCrypt login; validation errors; cache fill + eviction (only after commit, not on rollback); soft delete |
+| `MenuApiTest` (MockMvc, H2) | public menu hides inactive items and internal fields; category filter + bad category 400; sold-out item; HQL popular ordering; real BCrypt logins for `kitchen` and `staff` (each only its own role; the old admin login is rejected); the Kitchen availability switch (saved, enforced at checkout, 403/401 for other callers); cache fill + eviction (only after commit, not on rollback) |
 | `OrderApiTest` (MockMvc, H2) | order creation with server-side totals, stock and popularity; 9 invalid-order cases (400/409); duplicate submission; full counter lifecycle incl. invalid transitions, payment-before-pickup, duplicate payment, wrong OTP, double pickup; only counter payment exists; cancellation restores stock; customer reads own order only with the OTP and never sees it; staff page is one list; OTP lock-out on the customer read; tracking/payment pages removed; staff authorization; 6-thread race for the last item; double "Mark paid", cancel-vs-payment race; repeated cancellation; 20 parallel OTP guesses; Hibernate/Spring demo endpoints |
 | `NotificationControllerTest` | valid event → 201; invalid payload → 400 |
 
@@ -231,43 +230,44 @@ wrong and correct OTP, cancellation, availability toggle) was also exercised aga
 | 5 | Confirm handover before payment | 409 "Payment pending" | Pass |
 | 6 | Verify with wrong OTP | 400 | Pass |
 | 7 | Verify twice | 409 "already collected" | Pass |
-| 9 | `staff` toggles availability / `kitchen` collects an order | 403 / 403 | Pass |
-| 10 | 6 simultaneous orders for last item | 1 × 201, 5 × 409, stock 0 | Pass |
-| 11 | Notification service down, Ready for Pickup | 200, order READY_FOR_PICKUP, warning logged | Pass |
-| 13 | 20 parallel wrong OTP guesses | at most 5 checked, then locked | Pass |
+| 8 | `staff` toggles availability / `kitchen` collects an order | 403 / 403 | Pass |
+| 9 | 6 simultaneous orders for last item | 1 × 201, 5 × 409, stock 0 | Pass |
+| 10 | Notification service down, Ready for Pickup | 200, order READY_FOR_PICKUP, warning logged | Pass |
+| 11 | 20 parallel wrong OTP guesses | at most 5 checked, then locked | Pass |
 
 ## 8. Results
 
-*(Real screenshots are in [`screenshots/`](screenshots/), listed in [`REQUIREMENTS_MAP.md`](REQUIREMENTS_MAP.md). Postman, console and test-run screenshots still need to be captured by the team.)*
+*(Real screenshots of the final application are in [`screenshots/`](screenshots/); the full list is in [`REQUIREMENTS_MAP.md`](REQUIREMENTS_MAP.md), and the same images are used in the Word report. Postman, console and test-run screenshots still need to be captured by the team.)*
 
-- Figure 1 — Customer menu with live status and popular items (`01-customer-menu-desktop.png`)
-- Figure 2 — Cart and payment selection (`03-cart-desktop.png`)
-- Figure 3 — Order confirmation with pickup code and live status *(to be re-captured)*
-- Figure 4 — Staff Orders list *(to be re-captured)*
-- Figure 5 — Collecting an order: OTP entered on a Ready card *(to be re-captured)*
-- Figure 6 — Notification service log line for an order marked READY_FOR_PICKUP
-- Figure 7 — Kitchen page: Menu Availability tab *(to be captured)*
-- Figure 8 — Postman responses (201, 400, 401, 403, 409)
-- Figure 9 — Both services running; notification log line
-- Figure 10 — `./mvnw test` BUILD SUCCESS
+- Figure 1 — Customer menu (`01-customer-menu.png`)
+- Figure 2 — Cart and checkout (`04-cart-checkout.png`)
+- Figure 3 — Order confirmation with the pickup OTP (`05-order-confirmation-otp.png`)
+- Figure 4 — Kitchen page, Incoming Orders (`06-kitchen-incoming-orders.png`)
+- Figure 5 — Kitchen page, Menu Availability (`07-kitchen-menu-availability.png`)
+- Figure 6 — Staff page: ready orders with the OTP field (`09-staff-ready-orders-otp.png`)
+- Figure 7 — Staff page after a correct OTP: PAID and Confirm handover (`10-staff-otp-verified.png`)
+- Figure 8 — The customer's confirmation after the handover (`12-order-collected-customer.png`)
+- Figure 9 — Postman responses (201, 400, 401, 403, 409) *(to be captured)*
+- Figure 10 — Both services running; notification log line *(to be captured)*
+- Figure 11 — `./mvnw clean package` BUILD SUCCESS *(to be captured)*
 
 ## 9. Limitations and future enhancements
 
 | Limitation | Possible enhancement |
 |---|---|
 | Payment at the counter only | Add an online gateway (e.g. Razorpay/Stripe) as another `Payment` subclass, confirmed via webhook |
-| Status updates by polling (confirmation every 5 s, Orders list every 10 s) | Server-Sent Events or WebSockets; real SMS / push notifications |
+| Status updates by polling (confirmation every 5 s, Kitchen and Staff lists every 10 s) | Server-Sent Events or WebSockets; real SMS / push notifications |
 | Notification only logged | SMS / e-mail / web push; message broker with retries |
 | OTP attempt counter in memory | Persist in the database or Redis for multi-server deployments |
 | No customer accounts | Optional login with order history and favourites |
-| Opening hours shown but not enforced | Scheduled pre-order slots and kitchen capacity limits |
+| Pre-orders are accepted at any time | Scheduled pre-order slots and kitchen capacity limits |
 | `ddl-auto=update` never alters existing columns | Flyway migrations, `ddl-auto=validate` |
 | Single canteen | Multi-outlet support, analytics dashboard |
 
 ## 10. Conclusion
 
 NoQ meets its objectives: customers can pre-order from a responsive interface and collect with a secure pickup code,
-staff process orders and payments from one clear Orders page, and stock stays consistent under concurrent orders. The
+the kitchen and the counter staff each work from one clear page, and stock stays consistent under concurrent orders. The
 project demonstrates the complete Spring stack required by Unit IV — MVC, dependency injection, JPA/Hibernate with HQL,
 inheritance mapping, sessions and transactions, AOP and caching — and the Unit V concepts of RESTful web services and
 microservice communication, with automated tests and Postman collections proving the behaviour.

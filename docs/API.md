@@ -176,7 +176,7 @@ for this order. Please ask at the counter.` Unknown reference → **404**.
 `GET /api/orders?status=PREPARING` (Kitchen) · `GET /api/orders?status=READY_FOR_PICKUP` (Staff) (HQL: `select o from CustomerOrder o where o.status = :status order by o.createdAt desc`) → array of order details.
 
 ### Change status (KITCHEN)
-`PATCH /api/orders/NQ-2026-DEBCE/status` `{"status": "PREPARING"}` → **200** order details.
+`PATCH /api/orders/NQ-2026-DEBCE/status` `{"status": "READY_FOR_PICKUP"}` → **200** order details.
 Life cycle: `PREPARING → READY_FOR_PICKUP → COLLECTED`.
 
 | Attempt | Response |

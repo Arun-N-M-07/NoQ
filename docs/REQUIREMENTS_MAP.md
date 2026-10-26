@@ -24,7 +24,7 @@ Paths are relative to `noq-app/src/main/java/com/noq/` unless they start with a 
 | Requirement | Where |
 |---|---|
 | Branding + tagline "No Queue. Just Order." | `templates/fragments.html` (header, under the NoQ logo) |
-| Canteen operating status | `HomeController.index()` (`noq.canteen.opens-at/closes-at`) - computed, no longer shown on the simplified menu page |
+| Canteen operating status | **Removed by design** in the simplified version: the menu page no longer shows opening hours (pre-orders were never blocked) |
 | Categories, filter, search, sort | `index.html` chips/search/sort, `static/js/menu.js`; API `GET /api/menu?category=` |
 | Menu cards with image, price, description, availability | `index.html` menu grid; emoji fallback in `app.js` |
 | Popular / frequently ordered items | "Most popular" sort on `index.html`, `MenuService.getPopularItems()`, `GET /api/menu/popular` |
@@ -46,7 +46,7 @@ Paths are relative to `noq-app/src/main/java/com/noq/` unless they start with a 
 | Unavailable/inactive not orderable, greyed out with a label | `MenuItem.isOrderable()`, `index.html` "Not available" / "Sold out", `OrderService.addLineToOrder()` 409 | `soldOutItemIsNotOrderable`, `invalidOrdersAreRejected` |
 | Decrease stock on order, block over-ordering | `OrderService.placeOrder()`, `MenuItem.reduceStock()` | `placingAnOrderDeductsStock…` |
 | Kitchen updates availability | Kitchen page toggle (`kitchen.js`) → `PATCH /api/menu/{id}/availability` (KITCHEN only); stock changes only with orders | `kitchenStaffToggleAvailabilityIsSavedAndEnforcedByCheckout`, `cacheIsFilledOnReadAndEvictedOnStaffUpdate` |
-| Popularity increases with orders; popular section sorted; fallback | `reduceStock()`, HQL 1, `HomeController` "House favourites" fallback | `hqlPopularQueryReturns…` |
+| Popularity increases with orders; popular items sorted by popularity | `reduceStock()`, HQL 1 (`findPopularAvailable`), "Most popular" sort | `hqlPopularQueryReturns…` |
 | Cacheable menu, eviction on change (after commit, not on rollback) | `MenuService` | `cacheIsFilledOnReadAndEvictedOnStaffUpdate`, `cacheIsEvictedOnlyAfterCommitAndNotOnRollback` |
 | Cache never used for checkout | `OrderService.placeOrder()` uses `menuItemRepository.findWithLockById` | |
 | Abandoned orders don't hold stock | A PREPARING order can be cancelled via the API (`OrderService.cancel()` restores stock once); the automatic online-order expiry was removed with online payment | `cancellingRestoresStock`, `twoStaffMarkingTheSameCounterOrderPaidCreateOnePayment`, `cancelRacingCounterPaymentNeverLeavesAnInconsistentOrder` |
@@ -92,7 +92,7 @@ Paths are relative to `noq-app/src/main/java/com/noq/` unless they start with a 
 | Progress indicator, auto refresh, ready message | Status pill + message on the confirmation, refreshed every 5 s while open (no separate tracking page) |
 | Cancellation rules + stock restore (exactly once) | `OrderService.cancel()` via staff *Cancel* (new orders) (test `cancellingRestoresStock`) |
 
-## Staff Orders page (§4)
+## Kitchen and Staff pages (§4)
 
 | Requirement | Where |
 |---|---|
@@ -122,7 +122,7 @@ Paths are relative to `noq-app/src/main/java/com/noq/` unless they start with a 
 | Concept | Where to show it |
 |---|---|
 | A. Spring Boot & MVC, request lifecycle | `HomeController` → `MenuService` → repository → `index.html`; diagram in `ARCHITECTURE.md §7` |
-| B. JPA & Hibernate, CRUD | `MenuService` create/read/update/soft-delete, `OrderService` |
+| B. JPA & Hibernate, CRUD | `MenuService` reads and `updateAvailability`, `OrderService` create/read/update (nothing is deleted) |
 | C. HQL ×2 | `MenuItemRepository.findPopularAvailable` (popular), `CustomerOrderRepository.findByStatusNewestFirst` (status filter); also 3 HQL queries in `ConceptDemoService` |
 | D. Inheritance mapping | `Payment` / `CashPayment` (SINGLE_TABLE), `GET /api/demo/hibernate-session` shows `type(p)` grouping |
 | E. SessionFactory, Session, Transaction | `ConceptDemoService.hibernateSessionDemo()`, `GET /api/demo/hibernate-session`; `@Transactional` everywhere else |
@@ -134,10 +134,10 @@ Paths are relative to `noq-app/src/main/java/com/noq/` unless they start with a 
 
 | Concept | Where |
 |---|---|
-| REST under `/api`, GET/POST/PUT/PATCH/DELETE | `restcontroller/*`, `docs/API.md` |
-| Status codes 200/201/204/400/401/403/404/409 | `GlobalExceptionHandler`, `SecurityConfig` JSON handlers; all exercised in Postman |
+| REST under `/api` (GET, POST, PATCH are used; PUT and DELETE are explained only) | `restcontroller/*`, `docs/API.md` |
+| Status codes 200/201/400/401/403/404/409 | `GlobalExceptionHandler`, `SecurityConfig` JSON handlers; all exercised in Postman |
 | `@Valid`, structured errors | DTOs, `ApiError` |
-| Web services theory, REST vs SOAP | `docs/REPORT.md §7`, `docs/VIVA_GUIDE.md` |
+| Web services theory, REST vs SOAP | `docs/REPORT.md §5`, `docs/VIVA_GUIDE.md`, report Chapter 8 |
 | Separate microservice on 8081 | `noq-notification-service/` |
 | RestClient integration, graceful failure | `NotificationClient` (test: `counterOrderFullLifecycle…` runs with the service unreachable) |
 | Monolith vs microservices, Spring Cloud | `docs/REPORT.md §8`, `docs/VIVA_GUIDE.md` |
@@ -151,8 +151,8 @@ Paths are relative to `noq-app/src/main/java/com/noq/` unless they start with a 
 | 5 Config template | `noq-app/.env.example` |
 | 6 Postman | `postman/NoQ.postman_collection.json` (35 requests, auto-tests), `docs/API.md` |
 | 7 README | `README.md` |
-| 8 Mermaid architecture diagram | `docs/ARCHITECTURE.md` |
-| 9 Project report | `docs/REPORT.md` |
+| 8 Architecture diagrams | `docs/ARCHITECTURE.md` (Mermaid) and `docs/diagrams/*.png` |
+| 9 Project report | `docs/REPORT.md` (Markdown) and `docs/TeamNo_NoQ_Report.docx` (Word, for submission) |
 | 10 Screenshot checklist | below |
 | 11 This table | `docs/REQUIREMENTS_MAP.md` |
 | 12 Viva guide | `docs/VIVA_GUIDE.md` |
@@ -163,55 +163,52 @@ Paths are relative to `noq-app/src/main/java/com/noq/` unless they start with a 
 
 ## Screenshots
 
-Real screenshots of the running app (headless Chrome, MySQL-backed, demo data) are saved in [`docs/screenshots/`](screenshots/).
-**They were taken before the simplification:** rows marked *(old UI)* show pages or layouts that no longer exist and
-should be re-captured (order confirmation, staff Orders list).
+Real screenshots of the final application, captured in headless Google Chrome from the running app (H2 database, demo data)
+while one order was taken from the cart to the handover. They are stored in [`docs/screenshots/`](screenshots/) and are the
+same images used in the Word report (Chapter 10). The pickup code visible in them belongs to a throw-away demo order.
 
 | File | Shows |
 |---|---|
-| `01-customer-menu-desktop.png`, `07-customer-menu-mobile.png` | Menu home: tagline, open/closed pill, popular strip, sold-out card *(old UI: still shows the track box)* |
-| `02-menu-filter-sort-desktop.png` | Category filter + sort by price |
-| `03-cart-desktop.png`, `08-cart-mobile.png` | Cart and payment options |
-| `04-demo-online-payment.png` | *(old UI)* simulated online payment page - online payment removed |
-| `05-tracking-placed-with-pickup-code.png` | *(old UI)* Tracking page - replaced by the order confirmation |
-| `06-tracking-ready.png`, `09-tracking-ready-mobile.png` | *(old UI)* Tracking page "Your order is ready!" |
-| `10-staff-login.png` | Staff login |
-| `11-staff-order-board.png`, `15-staff-order-board-mobile.png` | *(old UI)* 4-column order board - now one Orders list |
-| `12-staff-awaiting-counter-payment.png` | *(old UI)* status filter row - removed |
-| `13-admin-menu-management.png` | *(old UI)* admin menu page - removed |
-| `14-admin-menu-form-validation-errors.png` | *(old UI)* admin add-item form - removed |
-| `16-admin-menu-inactive-and-sold-out-rows.png` | *(old UI)* admin menu table - removed |
-| `17-tracking-cancelled.png` | *(old UI)* customer cancel - removed (staff cancel new orders) |
-| `18-menu-external-images-blocked-emoji-fallback.png` | All photos blocked: every card shows an emoji tile (mobile) |
-| `19-admin-menu-mobile-390.png`, `20-demo-payment-mobile-390.png` | *(old UI)* admin menu and online payment page (both removed), at 390 px |
-| `21-tracking-expired-unpaid-online-order.png` | *(old UI)* online order cancelled by the old expiry job (both removed) |
+| `01-customer-menu.png` | Customer menu: title, search, sort, category chips, dish rows with price and availability (Margherita Pizza is "Sold out") |
+| `02-menu-filter-beverages.png` | Category filter (Beverages) |
+| `03-menu-with-cart-bar.png` | Menu after adding dishes: quantity buttons and the "View cart" bar |
+| `04-cart-checkout.png` | Cart and checkout: pay at counter, Place order |
+| `05-order-confirmation-otp.png` | Order confirmation: reference, pickup OTP, items, total, status PREPARING, payment PENDING |
+| `06-kitchen-incoming-orders.png` | Kitchen page, Incoming Orders tab: one *Ready for Pickup* button per order |
+| `07-kitchen-menu-availability.png` | Kitchen page, Menu Availability tab: one switch per dish |
+| `08-order-ready-customer.png` | The customer's confirmation after the kitchen pressed *Ready for Pickup* (READY FOR PICKUP) |
+| `09-staff-ready-orders-otp.png` | Staff page: ready orders, each with the *Enter pickup OTP* field (a code is being typed) |
+| `10-staff-otp-verified.png` | Staff page after a correct OTP: PAID, "OTP verified. Food can be delivered.", *Confirm handover* |
+| `11-staff-login.png` | Kitchen / Staff login page |
+| `12-order-collected-customer.png` | The customer's confirmation after the handover (COLLECTED) |
+| `13-customer-menu-mobile.png` | Customer menu on a 390 px phone screen |
+| `14-staff-ready-orders-mobile.png` | Staff page on a 390 px phone screen |
 
-Not captured as files (do these yourself for the report): Postman responses (items 17–20), console log lines (22–24, 24b),
-`./mvnw test` output (25), MySQL Workbench (26) and the GitHub page (27).
+Not captured as files (do these yourself for the report): Postman responses (items 17-20), console log lines (22-24),
+`./mvnw clean package` output (25), MySQL Workbench (26) and the GitHub page (27).
 
-## Screenshot checklist (original list)
+## Screenshot checklist
 
-Capture these from the running application (desktop width ~1280 px unless noted) and paste them into the report.
+Items marked [x] are covered by the files above; the others need the team (they cannot be produced from the browser).
 
 **Customer**
-- [ ] 1. Menu home: "Canteen Menu" title, search, sort, category chips, menu cards
-- [ ] 2. Menu filtered by a category + a search term, sorted by price
-- [ ] 3. A sold-out card ("Margherita Pizza") and a low-stock "Only N left" label
-- [ ] 4. Mobile view (375 px) of the menu with the floating "View cart" bar
-- [ ] 5. Cart page with quantity steppers, summary and the two payment options
+- [x] 1. Menu home: "Canteen Menu" title, search, sort, category chips, menu cards (`01`)
+- [x] 2. Menu filtered by a category (`02`)
+- [x] 3. A sold-out card ("Margherita Pizza", visible in `01`)
+- [x] 4. Mobile view of the menu (`13`); the "View cart" bar is shown on desktop in `03`
+- [x] 5. Cart page with quantity steppers, total and Pay at counter (`04`)
 - [ ] 6. Error on checkout (e.g. mark a dish Not available on the Kitchen page, then try to order it from an old cart)
-- [ ] 7. Order confirmation (pay at counter): reference, items, total, payment status, pickup code
+- [x] 7. Order confirmation (pay at counter): reference, items, total, payment status, pickup code (`05`, then `08` and `12` as the status changes)
 
-**Staff**
-- [ ] 11. Staff login page
-- [ ] 12. Kitchen → Incoming Orders with a "Ready for Pickup" button
-- [ ] 13. Staff page: the OTP field (a correct OTP records the payment), "OTP verified. Food can be delivered." and "Confirm handover"
-- [ ] 14. Wrong OTP toast, then successful "collected" toast
-- [ ] 15b. Kitchen page: Menu Availability tab with a dish marked Not available, and the greyed-out card on the customer menu
-- [ ] 15c. Kitchen page: Incoming Orders tab showing a just-placed order
-- [ ] 16. Add-item form showing validation errors
+**Kitchen and Staff**
+- [x] 11. Login page (`11`)
+- [x] 12. Kitchen, Incoming Orders with a "Ready for Pickup" button (`06`)
+- [x] 13. Staff page: the OTP field, then "OTP verified. Food can be delivered." and "Confirm handover" (`09`, `10`)
+- [ ] 14. Wrong OTP toast, then the "collected" toast
+- [x] 15b. Kitchen, Menu Availability tab (`07`); the greyed-out card on the customer menu is not captured
+- [x] 15c. Kitchen, Incoming Orders tab showing just-placed orders (`06`)
 
-**APIs & services**
+**APIs and services**
 - [ ] 17. Postman: `POST /api/orders` 201 response with reference + OTP
 - [ ] 18. Postman: a 409 (sold out) and a 400 (validation) response
 - [ ] 19. Postman: 401 without login, and 403 when `staff` calls a kitchen endpoint
@@ -220,6 +217,6 @@ Capture these from the running application (desktop width ~1280 px unless noted)
 - [ ] 22. Console: `LoggingAspect` timing lines and "Cache MISS" appearing only once
 - [ ] 23. Two terminals: noq-app on 8080 and notification service on 8081, with the `NOTIFY customer` log line
 - [ ] 24. Notification service stopped → warning in noq-app log, order still READY_FOR_PICKUP
-- [ ] 25. `./mvnw test` → BUILD SUCCESS
+- [ ] 25. `./mvnw clean package` → BUILD SUCCESS
 - [ ] 26. MySQL Workbench / `SHOW TABLES` and `SELECT * FROM payment` showing the `payment_type` discriminator
 - [ ] 27. GitHub repository page with commit history
