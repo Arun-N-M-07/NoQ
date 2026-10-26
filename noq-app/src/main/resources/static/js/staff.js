@@ -36,7 +36,7 @@
       <ul>${o.items.map(i => `<li><b>${i.quantity}×</b> ${esc(i.name)}</li>`).join('')}</ul>
       <div class="meta">
         <span class="pill">₹${esc(o.totalAmount)}</span>
-        <span class="pill ${o.paymentStatus === 'PAID' ? 'pill-ok' : 'pill-warn'}">${esc(o.paymentStatus)}</span>
+        <span class="pill ${o.paymentStatus === 'PAID' ? 'pill-ok' : 'pill-warn'}">Payment: ${esc(o.paymentStatus)}</span>
       </div>
       <div class="actions">${action(o)}</div>
     </article>`;

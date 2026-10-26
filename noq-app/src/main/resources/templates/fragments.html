@@ -4,7 +4,7 @@
 <head th:fragment="pageHead(title)">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="theme-color" content="#e4572e">
+    <meta name="theme-color" content="#faf8f4">
     <title th:text="${title} + ' · NoQ'">NoQ</title>
     <link rel="icon" th:href="@{/images/favicon.svg}" type="image/svg+xml">
     <link rel="stylesheet" th:href="@{/css/app.css}">
@@ -30,7 +30,7 @@
     <div class="container">
         <a class="brand" th:href="@{/staff}">
             <span class="brand-mark">Q</span>
-            <span><span class="brand-name">NoQ</span><span class="brand-sub" style="color:#cfc6ba">Staff</span></span>
+            <span><span class="brand-name">NoQ</span><span class="brand-sub">Staff</span></span>
         </a>
         <nav class="nav" aria-label="Staff">
             <a sec:authorize="hasRole('STAFF')" th:href="@{/staff}" th:attr="aria-current=${active == 'orders'} ? 'page' : null">Orders</a>

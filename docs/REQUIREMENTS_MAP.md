@@ -23,11 +23,11 @@ Paths are relative to `noq-app/src/main/java/com/noq/` unless they start with a 
 
 | Requirement | Where |
 |---|---|
-| Branding + tagline "No Queue. Just Order." | `templates/fragments.html` (header), `index.html` hero |
-| Canteen operating status | `HomeController.index()` (`noq.canteen.opens-at/closes-at`), hero pill |
+| Branding + tagline "No Queue. Just Order." | `templates/fragments.html` (header, under the NoQ logo) |
+| Canteen operating status | `HomeController.index()` (`noq.canteen.opens-at/closes-at`) - computed, no longer shown on the simplified menu page |
 | Categories, filter, search, sort | `index.html` chips/search/sort, `static/js/menu.js`; API `GET /api/menu?category=` |
 | Menu cards with image, price, description, availability | `index.html` menu grid; emoji fallback in `app.js` |
-| Popular / frequently ordered items | `index.html` popular strip, `MenuService.getPopularItems()`, `GET /api/menu/popular` |
+| Popular / frequently ordered items | "Most popular" sort on `index.html`, `MenuService.getPopularItems()`, `GET /api/menu/popular` |
 | Cart icon with count | `fragments.html` `[data-cart-count]`, `app.js updateCartBadges()` |
 | Order tracking section | **Removed by design** in the simplified version: no tracking page; the confirmation (re-opened from the cart icon) holds everything needed for pickup |
 | Browse without account | `SecurityConfig` permits customer pages and APIs |
@@ -194,7 +194,7 @@ Not captured as files (do these yourself for the report): Postman responses (ite
 Capture these from the running application (desktop width ~1280 px unless noted) and paste them into the report.
 
 **Customer**
-- [ ] 1. Menu home: hero with tagline, open/closed pill, popular strip
+- [ ] 1. Menu home: "Canteen Menu" title, search, sort, category chips, menu cards
 - [ ] 2. Menu filtered by a category + a search term, sorted by price
 - [ ] 3. A sold-out card ("Margherita Pizza") and a low-stock "Only N left" label
 - [ ] 4. Mobile view (375 px) of the menu with the floating "View cart" bar

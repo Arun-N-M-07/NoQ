@@ -143,7 +143,7 @@ Hibernate translates it to the database's SQL dialect. JPQL is the standard subs
    `select o from CustomerOrder o where o.status = :status order by o.createdAt desc` (named parameter `:status`)
 3. In `ConceptDemoService`: `select type(p), count(p) from Payment p group by type(p)` — uses the inheritance discriminator.
 
-Run them: home page popular strip / `GET /api/menu/popular`; `GET /api/orders?status=PREPARING` (Kitchen page) / `READY_FOR_PICKUP` (Staff page).
+Run them: `GET /api/menu/popular` (and the menu's "Most popular" sort); `GET /api/orders?status=PREPARING` (Kitchen page) / `READY_FOR_PICKUP` (Staff page).
 
 ### Inheritance mapping
 **Q: Explain your inheritance mapping.**

@@ -80,7 +80,7 @@ Follow `NQ-2026-DEBCE` from the first click to the moment the food is handed ove
 | File | Notes |
 |---|---|
 | `templates/fragments.html` | Shared `<head>`, customer header (cart badge), staff header, footer. |
-| `templates/index.html` | Hero, live open/closed status, popular strip, filter/search/sort, menu cards. |
+| `templates/index.html` | "Canteen Menu" title, filter/search/sort, menu cards. |
 | `templates/cart.html`, `error.html` | Checkout (pay at counter), then the order confirmation with the OTP card and live status; friendly errors. |
 | `templates/staff/*.html` | Login, Orders list, Kitchen (two tabs), menu table, add/edit form with server-side error messages. |
 | `static/js/app.js` | Cart and last order confirmation in `localStorage`, `api()` fetch wrapper, toast, image fallback. |

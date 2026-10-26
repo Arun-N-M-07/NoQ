@@ -33,9 +33,7 @@
           </div></div>`;
     }).join('');
 
-    const total = NoQ.cart.total();
-    document.querySelector('[data-subtotal]').textContent = NoQ.money(total);
-    document.querySelector('[data-total]').textContent = NoQ.money(total);
+    document.querySelector('[data-total]').textContent = NoQ.money(NoQ.cart.total());
     placeBtn.disabled = lines.length === 0 || problems > 0;
   }
 

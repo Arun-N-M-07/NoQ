@@ -53,7 +53,6 @@
       const card = cards.find(c => c.dataset.id === add.dataset.add);
       if (!card || card.dataset.orderable !== 'true') return;
       NoQ.cart.add(cardData(card));
-      if (!add.closest('[data-cart-control]')) NoQ.toast(`Added ${card.dataset.name}`);
       renderControls();
     } else if (dec) {
       NoQ.cart.setQty(dec.dataset.dec, NoQ.cart.qty(dec.dataset.dec) - 1);
