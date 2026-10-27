@@ -14,11 +14,11 @@ come to the counter when the food is ready. The kitchen and the counter each get
 
 **Q: Walk us through one order.**
 Menu page → cart in `localStorage` → `POST /api/orders` → `OrderService.placeOrder()` validates every item against
-the database, deducts stock, snapshots prices, generates reference + OTP, saves in one transaction → 201 with the
-OTP → the cart page shows the order confirmation (reference, items, total, payment status, OTP, current status) → on
+the database (active and available), snapshots prices, generates reference + OTP, saves in one transaction → 201 with the
+OTP → the cart page shows the order confirmation (reference, items, total, OTP, current status) → on
 the Kitchen page the new order is PREPARING → the kitchen clicks *Ready for Pickup* → READY_FOR_PICKUP (microservice
-notified), so it moves to the Staff page → staff verify the customer's OTP (a correct OTP records the payment: "OTP verified. Food can be
-delivered.") and confirm the handover → COLLECTED. The customer's open confirmation re-reads the order every 5 s:
+notified), so it moves to the Staff page → staff type the customer's OTP and click
+*Verify & Complete Pickup*: one request that checks the order is ready and the OTP is right, and sets COLLECTED. The staff member then takes the money and hands over the food. The customer's open confirmation re-reads the order every 5 s:
 PREPARING → READY FOR PICKUP → "Collected — enjoy your meal!".
 
 **Q: Why is there no order-tracking page?**
@@ -30,15 +30,17 @@ the OTP header every 5 s, so it shows the real, saved status (Ready, Collected) 
 Anyone can edit JavaScript or send a request from Postman. The request only contains item ids and quantities; prices
 and totals come from the database. Our test sends a fake `"total": 1` and checks the server still charges ₹60.
 
-**Q: How do you stop two students buying the last samosa?**
-Checkout first locks the menu rows with `SELECT ... FOR UPDATE` (`@Lock(PESSIMISTIC_WRITE)`, in ascending id order), so
-buyers queue up; the second buyer then sees stock 0 and gets 409 "sold out". The same idea protects an order row: every
-action that changes an order (pay, status change, cancel, pickup) locks that order first. Without it, MySQL/InnoDB deadlocked:
-inserting `order_item` takes a shared lock on the `menu_item` row (foreign key check) and the later stock `UPDATE` needs
-an exclusive lock, so two buyers each waited for the other - MySQL killed one and the API answered 503. H2 does not
-behave like that, which is why the tests must also be run on MySQL. `@Version` stays as a safety net: Hibernate's update
-is `UPDATE menu_item SET … , version = version + 1 WHERE id = ? AND version = ?`, and a lost race becomes a 409. The test
-`concurrentCustomersCannotOversellTheLastItem` fires 6 parallel orders for 1 item: exactly one 201, five 409s, stock 0.
+**Q: What happens when many students order the same dish at the same time?**
+There is no stock, so there is nothing to oversell: while the kitchen keeps a dish *Available*, every order succeeds.
+Checkout only checks `active` and `available`, read from the database (never the cache). The one shared number an order
+changes is the dish's `popularityCount`, bumped with a single atomic `UPDATE ... SET popularity_count = popularity_count + ?`
+(`MenuItemRepository.adjustPopularity`), so no read-modify-write can lose an increment and no entity version conflict can
+reject a customer. Lines are processed in ascending menu-item id order, so two multi-item orders never take row locks in
+opposite order. What *is* still locked is the order row: every action that changes an order (pay, status change, cancel,
+pickup) locks that order first (`SELECT ... FOR UPDATE`), so two staff cannot collect or cancel the same order together.
+`@Version` stays on `CustomerOrder` and `MenuItem` as a safety net (e.g. two kitchen users toggling the same dish). The test
+`availableItemCanBeOrderedRepeatedlyAndByManyCustomersAtOnce` places 9 orders of 20 for one dish (3 one after another, 6 in
+parallel): all 9 return 201 and popularity grows by exactly 180.
 
 **Q: How is the pickup OTP kept secret?**
 Generated with `SecureRandom` (unpredictable), independent of the order number, stored only as a BCrypt hash (like a
@@ -47,9 +49,9 @@ and only kept in the customer's own browser. The customer endpoint that needs it
 wrong codes; no response ever includes it.
 
 **Q: How does payment work?**
-Only at the counter: the customer pays cash or UPI when collecting, staff verify the OTP and only then is a `CashPayment` row
-saved (wrong OTP = no payment). The handover (`collect`) is refused until the order is PAID. There is no online payment, so no card/UPI data ever
-reaches NoQ.
+It doesn't, inside NoQ. The customer pays cash or UPI by hand at the counter, outside the application: there is no payment
+entity, status, endpoint or button, so no card/UPI data ever reaches NoQ and a wrong payment record is impossible. A correct OTP on a
+READY_FOR_PICKUP order is all `completePickup()` needs. Trade-off to admit in a viva: NoQ cannot prove that the money was taken.
 
 **Q: What happens if the notification service is down?**
 The order is already committed as READY_FOR_PICKUP before we call it (`@TransactionalEventListener(AFTER_COMMIT)`), the call has a
@@ -90,7 +92,7 @@ written directly to the response as JSON.
 Request records carry Bean Validation annotations (`PlaceOrderRequest`: `@NotEmpty`, quantity `@Min(1) @Max(20)`;
 `PickupRequest`: `@Pattern("\\d{6}")`; `AvailabilityRequest`: `@NotNull`). `@Valid` on the controller parameter runs them;
 a failure throws `MethodArgumentNotValidException`, which `GlobalExceptionHandler` turns into **400** with one message
-per field. Business rules (stock, status, OTP) are checked again in the services.
+per field. Business rules (availability, status, OTP) are checked again in the services.
 
 ### Dependency Injection & IoC
 **Q: What is IoC / DI?**
@@ -119,10 +121,9 @@ foreign key, `@OneToMany(mappedBy=…)` → the inverse side, `@Version` → opt
 which Hibernate generated from these annotations.
 
 **Q: Relationships in NoQ?**
-`CustomerOrder` 1—* `OrderItem` (cascade ALL, so saving the order saves its items), `OrderItem` *—1 `MenuItem`,
-`CustomerOrder` 1—* `Payment`. `FetchType.LAZY` on `@ManyToOne` avoids loading what we don't need.
+`CustomerOrder` 1—* `OrderItem` (cascade ALL, so saving the order saves its items), `OrderItem` *—1 `MenuItem`. `FetchType.LAZY` on `@ManyToOne` avoids loading what we don't need.
 
-**Q: CRUD?** Create: `orderRepository.save(order)` (INSERT order + items by cascade, payments by `CashPayment`). Read:
+**Q: CRUD?** Create: `orderRepository.save(order)` (INSERT order + items by cascade). Read:
 `getMenu`/`getItem`/`findByStatusNewestFirst`. Update: `MenuService.updateAvailability` and status changes change a
 managed entity → Hibernate *dirty checking* issues UPDATE at commit, no `save()` needed. Delete: nothing is deleted -
 orders are history, and a dish is hidden with `active = false` (old `order_item` rows reference it by foreign key).
@@ -138,22 +139,20 @@ Hibernate translates it to the database's SQL dialect. JPQL is the standard subs
 
 **Q: Show your HQL queries.**
 1. `MenuItemRepository.findPopularAvailable`:
-   `select m from MenuItem m where m.active = true and m.available = true and m.availableQuantity > 0 order by m.popularityCount desc, m.id asc`
+   `select m from MenuItem m where m.active = true and m.available = true order by m.popularityCount desc, m.id asc`
 2. `CustomerOrderRepository.findByStatusNewestFirst`:
    `select o from CustomerOrder o where o.status = :status order by o.createdAt desc` (named parameter `:status`)
-3. In `ConceptDemoService`: `select type(p), count(p) from Payment p group by type(p)` — uses the inheritance discriminator.
+3. In `ConceptDemoService`: `select count(m) from MenuItem m where m.active = true` and the top-three popularity query.
 
 Run them: `GET /api/menu/popular` (and the menu's "Most popular" sort); `GET /api/orders?status=PREPARING` (Kitchen page) / `READY_FOR_PICKUP` (Staff page).
 
 ### Inheritance mapping
-**Q: Explain your inheritance mapping.**
-Abstract `Payment` with `@Inheritance(strategy = SINGLE_TABLE)` and `@DiscriminatorColumn(name = "payment_type")`.
-`CashPayment` (`@DiscriminatorValue("CASH")`, `receivedBy`). All rows go into one `payment` table; Hibernate fills
-`payment_type` on insert and uses it to create the right subclass on read. A new way to pay would just be another
-subclass with its own discriminator value (its own columns would be NULL for cash rows).
+**Q: Does NoQ use an inheritance mapping?**
+Not any more. An earlier version had an abstract `Payment` with a `CashPayment` subclass (`@Inheritance(SINGLE_TABLE)`), which was removed
+together with payment tracking. Be ready to explain the strategies in theory:
 
 **Q: Other strategies?**
-- `SINGLE_TABLE` — one table, fastest (no joins), nullable subclass columns. *Our choice.*
+- `SINGLE_TABLE` — one table, fastest (no joins), nullable subclass columns. *What the old payment hierarchy used.*
 - `JOINED` — parent table + one table per subclass joined by PK; normalised but needs joins.
 - `TABLE_PER_CLASS` — one full table per concrete class; polymorphic queries need UNION.
 - `@MappedSuperclass` — shares fields only; the parent is not an entity and can't be queried.
@@ -191,13 +190,13 @@ method without a single log line inside the services.
 **Q: How does your cache work?**
 `@Cacheable(cacheNames = "menu", key = "#category == null ? 'ALL' : #category.name()")` on `MenuService.getMenu`.
 First call: method runs, logs "Cache MISS", result stored in Caffeine. Next calls with the same key return the stored
-list — no SQL. After every staff change and every order/cancel (stock or popularity changed), `MenuService.evictMenuCaches()`
+list — no SQL. After every staff change and every order/cancel (availability or popularity changed), `MenuService.evictMenuCaches()`
 registers a `TransactionSynchronization` that clears both caches in `afterCommit()`. Clearing *before* the commit would let
 another request re-cache the old rows; on rollback nothing is cleared because nothing changed.
 Caffeine also expires entries after 60 s. Show `/actuator/metrics/cache.gets?tag=cache:menu&tag=result:hit`.
 
 **Q: Why not use the cache at checkout?** It may be up to 60 s old. The database is the source of truth: checkout always
-reads stock with `findById` inside the transaction.
+reads availability with `findById` inside the transaction.
 
 ### Spring Security (supporting topic)
 Form login for staff pages, HTTP Basic for Postman, BCrypt password hashes in `staff_user`, URL rules in
@@ -305,7 +304,7 @@ operations: version control, automated build/test, monitoring (Actuator), config
 `.gitignore`; only `.env.example` with placeholders is committed.
 
 **Q: What do your tests cover?** 32 automated tests: unit test of status rules, MockMvc integration tests for menu and order
-APIs (validation, stock, transitions, payments, OTP, authorization, caching, concurrency), and the microservice endpoint.
+APIs (validation, availability, transitions, OTP, authorization, caching, concurrency), and the microservice endpoint.
 They run on H2, so no MySQL is needed in CI.
 
 ---
@@ -315,15 +314,15 @@ They run on H2, so no MySQL is needed in CI.
 - *Why `BigDecimal`?* `0.1 + 0.2 != 0.3` in `double`; money must be exact.
 - *Why store item name/price on `OrderItem`?* So later menu edits don't change old bills.
 - *Why `@Enumerated(STRING)` not ORDINAL?* Reordering the enum would silently corrupt old data with ordinals.
-- *What if two staff record the payment together?* the order row is locked (`FOR UPDATE`) before it is changed, so the second request waits, then sees PAID and gets 409.
+- *What if two staff enter the OTP for the same order together?* the order row is locked (`FOR UPDATE`) before it is changed, so the second request waits, then sees COLLECTED and gets 409.
 - *Can a collected order go back to PREPARING?* No — `OrderStatus.canMoveTo()` returns false for every move out of COLLECTED/CANCELLED.
-- *Why verify the OTP and then confirm separately?* Staff see "OTP verified" before handing over the food; the confirm call (`collect`) checks the OTP again on the server, so skipping step 1 never helps.
+- *Why is OTP check and handover one call?* A separate "verify" step proves nothing the server can rely on: the final call has to re-check the OTP anyway. One locked, transactional `completePickup()` checks status and OTP and saves COLLECTED, or changes nothing; there is no half-done state to get stuck in.
 - *Why polling (Kitchen and Staff lists every 10 s, confirmation every 5 s) and not WebSockets?* Simple, works everywhere, a few seconds' delay is fine for food. WebSockets/SSE would push instantly.
-- *Why two simple lists?* The kitchen only needs orders to cook (one *Ready for Pickup* button each); the counter only needs ready orders (pay, OTP, handover). The server re-checks every transition (`OrderStatus.canMoveTo()`).
+- *Why two simple lists?* The kitchen only needs orders to cook (one *Ready for Pickup* button each); the counter only needs ready orders (pickup). The server re-checks every transition (`OrderStatus.canMoveTo()`).
 - *Why is the order reference not the secret?* It's printed and shouted across the counter; the separate random OTP is the secret.
 - *Why is `pickupOtpHash` BCrypt and not SHA-256?* BCrypt is slow and salted, so a leaked database can't be reversed quickly.
-- *What if a student orders and never comes?* Stock was reserved at checkout. A PREPARING order can be cancelled through
-  the API (`cancel()` returns the stock exactly once); a ready order stays on the Staff page.
+- *What if a student orders and never comes?* A PREPARING order can be cancelled through
+  the API (`cancel()` reverses its popularity exactly once); a ready order stays on the Staff page.
 - *Can someone brute-force the 6-digit OTP?* The only public endpoint that checks it (reading the order back) allows 5 tries per order; pickup verification needs a staff login. The attempt is counted with an atomic
   `incrementAndGet()` **before** the slow BCrypt check, so 100 parallel guesses can't all get past the limit together
   (a test proves this; the first version of the code had exactly that bug).

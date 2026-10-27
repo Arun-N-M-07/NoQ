@@ -5,7 +5,6 @@ import com.noq.entity.CustomerOrder;
 import com.noq.entity.MenuItem;
 import com.noq.entity.OrderItem;
 import com.noq.enums.OrderStatus;
-import com.noq.enums.PaymentStatus;
 import com.noq.exception.ApiException;
 import com.noq.repository.CustomerOrderRepository;
 import com.noq.repository.MenuItemRepository;
@@ -52,10 +51,9 @@ public class OrderService {
     }
 
     /**
-     * Checkout. Reads current price and stock from the DATABASE (never from the cache or the browser),
-     * deducts stock, and saves the order with its items in one transaction.
-     * Menu rows are locked (FOR UPDATE) in ascending id order, so two customers buying the last samosa queue up:
-     * the second one sees stock 0 and gets a clean 409. (@Version stays as a safety net.)
+     * Checkout. Reads the current price and availability from the DATABASE (never from the cache or the browser)
+     * and saves the order with its items in one transaction. There is no stock count: any number of customers
+     * can order a dish while the kitchen keeps it available.
      */
     @Transactional
     public OrderPlacedResponse placeOrder(PlaceOrderRequest request) {
@@ -83,10 +81,10 @@ public class OrderService {
         order.setPickupOtpHash(pickupCodes.hash(otp));
         orderRepository.save(order); // cascades to the order items
 
-        menuService.evictMenuCaches(); // stock and popularity changed
-        String message = "Order placed! Pay ₹" + order.getTotalAmount() + " at the counter. Show your pickup code when collecting.";
+        menuService.evictMenuCaches(); // popularity changed
+        String message = "Order placed! Show your pickup code at the counter when collecting.";
         return new OrderPlacedResponse(order.getOrderReference(), otp, order.getStatus(),
-                order.getPaymentStatus(), order.getTotalAmount(), message,
+                order.getTotalAmount(), message,
                 order.getItems().stream().map(OrderItemResponse::from).toList());
     }
 
@@ -101,7 +99,7 @@ public class OrderService {
         }
     }
 
-    /** Merges repeated lines, e.g. [{1,x2},{1,x1}] becomes {1: 3}. TreeMap = sorted by id = same lock order for every buyer. */
+    /** Merges repeated lines, e.g. [{1,x2},{1,x1}] becomes {1: 3}. TreeMap = sorted by id, so every buyer updates menu rows in the same order (no deadlock on multi-item orders). */
     private Map<Long, Integer> mergeDuplicateLines(List<OrderLineRequest> lines) {
         Map<Long, Integer> quantities = new TreeMap<>();
         for (OrderLineRequest line : lines) {
@@ -110,9 +108,9 @@ public class OrderService {
         return quantities;
     }
 
-    /** Locks the menu item, checks it can be sold in this quantity, deducts the stock and adds the order line. */
+    /** Checks the menu item can be ordered (on the menu and available), then adds the order line. */
     private void addLineToOrder(CustomerOrder order, Long menuItemId, int quantity) {
-        MenuItem item = menuItemRepository.findWithLockById(menuItemId)
+        MenuItem item = menuItemRepository.findById(menuItemId)
                 .orElseThrow(() -> ApiException.badRequest("Menu item " + menuItemId + " does not exist"));
 
         if (quantity > MAX_QUANTITY_PER_ITEM) {
@@ -124,14 +122,8 @@ public class OrderService {
         if (!item.isAvailable()) {
             throw ApiException.conflict(item.getName() + " is not available right now");
         }
-        if (item.getAvailableQuantity() == 0) {
-            throw ApiException.conflict(item.getName() + " is sold out");
-        }
-        if (quantity > item.getAvailableQuantity()) {
-            throw ApiException.conflict("Only " + item.getAvailableQuantity() + " x " + item.getName() + " left");
-        }
 
-        item.reduceStock(quantity); // also increases popularityCount
+        menuItemRepository.adjustPopularity(item.getId(), quantity);
         order.addItem(new OrderItem(item, quantity));
     }
 
@@ -157,12 +149,12 @@ public class OrderService {
         return orders.stream().map(OrderResponse::from).toList();
     }
 
-    /** Kitchen marks an order READY_FOR_PICKUP (or it is cancelled). COLLECTED is only reachable through {@link #collect}. */
+    /** Kitchen marks an order READY_FOR_PICKUP (or it is cancelled). COLLECTED is only reachable through {@link #completePickup}. */
     @Transactional
     public OrderResponse updateStatus(String orderReference, OrderStatus newStatus) {
         CustomerOrder order = findForUpdate(orderReference);
         if (newStatus == OrderStatus.COLLECTED) {
-            throw ApiException.badRequest("Orders are collected by verifying the customer's pickup OTP (collect)");
+            throw ApiException.badRequest("Orders are collected by verifying the customer's pickup OTP (pickup)");
         }
         if (newStatus == OrderStatus.CANCELLED) {
             cancel(order);
@@ -180,29 +172,13 @@ public class OrderService {
         return OrderResponse.from(order);
     }
 
-    /** Step 1 at the counter: staff check the customer's OTP (before taking the money). Changes nothing. */
-    @Transactional(readOnly = true)
-    public OrderResponse verifyPickup(String orderReference, String otp) {
-        CustomerOrder order = find(orderReference);
-        checkPickup(order, otp);
-        return OrderResponse.from(order);
-    }
-
-    /** Step 2: staff confirm the handover. The OTP is checked again (the server never trusts step 1), the order must be PAID, then COLLECTED is saved once. */
+    /**
+     * Pickup at the counter, in ONE step: staff type the customer's OTP and, if it is right and the order is ready, it becomes COLLECTED.
+     * The order row is locked first, so two staff cannot collect the same order; nothing is saved unless every check passes. Payment is taken by hand at the counter; NoQ does not track it.
+     */
     @Transactional
-    public OrderResponse collect(String orderReference, String otp) {
+    public OrderResponse completePickup(String orderReference, String otp) {
         CustomerOrder order = findForUpdate(orderReference);
-        checkPickup(order, otp);
-        if (order.getPaymentStatus() != PaymentStatus.PAID) {
-            throw ApiException.conflict("Payment pending: collect ₹" + order.getTotalAmount() + " at the counter first");
-        }
-        order.setStatus(OrderStatus.COLLECTED);
-        order.setCompletedAt(LocalDateTime.now());
-        return OrderResponse.from(order);
-    }
-
-    /** An order can be handed over only once, only when READY_FOR_PICKUP, and only with its own OTP (collect also needs PAID). */
-    private void checkPickup(CustomerOrder order, String otp) {
         if (order.getStatus() == OrderStatus.COLLECTED) {
             throw ApiException.conflict("Order already collected at "
                     + order.getCompletedAt().format(DateTimeFormatter.ofPattern("hh:mm a")));
@@ -213,24 +189,24 @@ public class OrderService {
         if (!pickupCodes.matches(otp, order.getPickupOtpHash())) {
             throw ApiException.badRequest("Invalid pickup OTP");
         }
+        order.setStatus(OrderStatus.COLLECTED);
+        order.setCompletedAt(LocalDateTime.now());
+        return OrderResponse.from(order);
     }
 
-    /** Cancellation (API only) is allowed while the order is still being prepared; reserved stock goes back on the shelf. */
+    /** Cancellation (API only) is allowed while the order is still being prepared; the dishes no longer count towards popularity. */
     private void cancel(CustomerOrder order) {
         if (!order.getStatus().canMoveTo(OrderStatus.CANCELLED)) {
             throw ApiException.conflict("Only orders still being prepared can be cancelled (current: " + order.getStatus() + ")");
         }
         for (OrderItem line : order.getItems()) {
-            line.getMenuItem().restoreStock(line.getQuantity());
+            menuItemRepository.adjustPopularity(line.getMenuItem().getId(), -line.getQuantity());
         }
         order.setStatus(OrderStatus.CANCELLED);
-        if (order.getPaymentStatus() == PaymentStatus.PAID) {
-            order.setPaymentStatus(PaymentStatus.REFUNDED); // the counter gives the money back
-        }
         menuService.evictMenuCaches();
     }
 
-    /** Locks the order row, so two actions on the same order (pay, cancel, status change ...) run one after the other. */
+    /** Locks the order row, so two actions on the same order (cancel, status change, pickup ...) run one after the other. */
     CustomerOrder findForUpdate(String orderReference) {
         return orderRepository.findWithLockByOrderReference(orderReference)
                 .orElseThrow(() -> ApiException.notFound("Order " + orderReference + " not found"));

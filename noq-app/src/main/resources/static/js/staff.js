@@ -1,14 +1,13 @@
 /*
  * Order list used by two pages (one column, oldest first, refreshed every 10 s from the REST API):
  *   - Kitchen page (data-mode="kitchen"): orders still PREPARING, each with one "Ready for Pickup" button.
- *   - Staff page   (data-mode="staff"):   orders READY_FOR_PICKUP; verify the OTP (then the counter payment is
- *                                         recorded), then confirm the handover (COLLECTED).
+ *   - Staff page   (data-mode="staff"):   orders READY_FOR_PICKUP; one "Verify & Complete Pickup" click checks
+ *                                         the OTP and makes the order COLLECTED.
  * The server checks every rule again - the buttons only offer the next step.
  */
 (() => {
   const list = document.querySelector('[data-orders]');
   const kitchen = list.dataset.mode === 'kitchen';
-  const verified = new Map(); // ref -> OTP that the server accepted (step 1), sent again on "Confirm handover"
   const esc = NoQ.escapeHtml;
 
   function timeOf(iso) {
@@ -20,14 +19,11 @@
     const btn = (label, attr, cls = 'btn-primary') =>
       `<button class="btn btn-sm ${cls}" type="button" ${attr} data-ref="${ref}">${label}</button>`;
     if (kitchen) return btn('Ready for Pickup', 'data-ready');
-    if (verified.has(o.orderReference)) {
-      return `<span class="pill pill-ok">OTP verified. Food can be delivered.</span>${btn('Confirm handover', 'data-collect', 'btn-ok')}`;
-    }
     // The form carries its own order reference, so an OTP can only ever be checked against this order.
-    return `<form class="otp-row" data-verify="${ref}">
+    return `<form class="otp-row" data-pickup="${ref}">
         <label for="otp-${ref}">Enter pickup OTP</label>
         <input id="otp-${ref}" class="input" name="otp" inputmode="numeric" maxlength="6" pattern="\\d{6}" required autocomplete="off">
-        <button class="btn btn-sm btn-ok" type="submit">Verify OTP</button></form>`;
+        <button class="btn btn-sm btn-ok" type="submit">Verify &amp; Complete Pickup</button></form>`;
   }
 
   function card(o) {
@@ -36,7 +32,7 @@
       <ul>${o.items.map(i => `<li><b>${i.quantity}×</b> ${esc(i.name)}</li>`).join('')}</ul>
       <div class="meta">
         <span class="pill">₹${esc(o.totalAmount)}</span>
-        <span class="pill ${o.paymentStatus === 'PAID' ? 'pill-ok' : 'pill-warn'}">Payment: ${esc(o.paymentStatus)}</span>
+        <span class="pill ${o.status === 'READY_FOR_PICKUP' ? 'pill-ok' : 'pill-warn'}">${esc(o.status.replaceAll('_', ' '))}</span>
       </div>
       <div class="actions">${action(o)}</div>
     </article>`;
@@ -72,34 +68,29 @@
   }
 
   list.addEventListener('click', e => {
-    const b = e.target.closest('[data-ready], [data-collect]');
+    const b = e.target.closest('[data-ready]');
     if (!b) return;
     const ref = b.dataset.ref;
-    const url = `/api/orders/${encodeURIComponent(ref)}`;
-    if (b.dataset.ready !== undefined) run(b, `${url}/status`, { status: 'READY_FOR_PICKUP' }, `${ref} is ready for pickup`);
-    else run(b, `${url}/collect`, { otp: verified.get(ref) }, `${ref} collected ✔`).then(ok => { if (ok) verified.delete(ref); });
+    run(b, `/api/orders/${encodeURIComponent(ref)}/status`, { status: 'READY_FOR_PICKUP' }, `${ref} is ready for pickup`);
   });
 
   list.addEventListener('submit', async e => {
-    const form = e.target.closest('[data-verify]');
+    const form = e.target.closest('[data-pickup]');
     if (!form) return;
     e.preventDefault();
-    const ref = form.dataset.verify;
-    const url = `/api/orders/${encodeURIComponent(ref)}`;
-    const otp = form.otp.value.trim();
-    form.otp.blur();
-    form.querySelector('button').disabled = true;
-    // Step 1: the server checks the OTP (changes nothing); only a correct OTP goes on to record the counter payment.
-    // Step 2 is "Confirm handover", which the server refuses unless the order is PAID.
+    const ref = form.dataset.pickup;
+    const button = form.querySelector('button');
+    button.disabled = true;
+    // ONE request: the server checks status and OTP, and saves COLLECTED only if all of them pass.
     try {
-      const order = await NoQ.api(`${url}/verify-pickup`, { method: 'POST', body: { otp } });
-      if (order.paymentStatus !== 'PAID') await NoQ.api(`${url}/payments/counter-confirmation`, { method: 'POST', body: {} });
-      verified.set(ref, otp);
-      NoQ.toast('OTP verified. Food can be delivered.');
+      const order = await NoQ.api(`/api/orders/${encodeURIComponent(ref)}/pickup`, { method: 'POST', body: { otp: form.otp.value.trim() } });
+      form.closest('.actions').innerHTML = `<span class="pill pill-ok">Status: ${order.status.replaceAll('_', ' ')} ✔</span>`; // gone from the list at the next refresh
+      NoQ.toast(`${ref} collected ✔`);
     } catch (err) {
+      button.disabled = false;
       NoQ.toast(err.message, true);
+      form.otp.select();
     }
-    load();
   });
 
   load();

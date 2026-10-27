@@ -1,7 +1,7 @@
 /*
  * Shared helpers for every customer page.
  * The cart lives in localStorage so it survives page reloads. It is only a convenience:
- * the server re-checks every item, price and stock level when the order is placed.
+ * the server re-checks every item, price and availability when the order is placed.
  */
 const NoQ = (() => {
   const CART_KEY = 'noq.cart';            // { "3": {id, name, price, qty, image, emoji, max} }
@@ -23,7 +23,7 @@ const NoQ = (() => {
       const line = items[item.id] ?? { ...item, qty: 0 };
       if (line.qty >= Math.min(item.max ?? 20, 20)) { toast(`Only ${Math.min(item.max ?? 20, 20)} × ${item.name} allowed`, true); return; }
       line.qty += 1;
-      items[item.id] = { ...line, price: item.price, max: item.max };
+      items[item.id] = { ...line, price: item.price };
       this.save(items);
     },
     setQty(id, qty) {

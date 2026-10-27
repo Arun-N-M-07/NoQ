@@ -14,9 +14,8 @@
   const list = document.querySelector('[data-availability]');
 
   function row(item) {
-    const soldOut = item.availableQuantity === 0 ? ' · Sold out' : ''; // status only, never the stock count
     return `<div class="avail-row">
-      <div><b>${esc(item.name)}</b><div class="muted small">₹${esc(item.price)}${soldOut}</div></div>
+      <div><b>${esc(item.name)}</b><div class="muted small">₹${esc(item.price)}</div></div>
       <span class="pill ${item.available ? 'pill-ok' : 'pill-bad'}">${item.available ? 'Available' : 'Not available'}</span>
       <button class="btn btn-sm" type="button" data-id="${item.id}" data-available="${!item.available}">
         ${item.available ? 'Mark not available' : 'Mark available'}</button>

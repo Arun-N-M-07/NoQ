@@ -1,6 +1,6 @@
 # NoQ — Architecture
 
-Static PNG versions of the main diagrams (runtime architecture, request flow, workflows, order life-cycle, ER diagram, payment inheritance, notification sequence) are in [`diagrams/`](diagrams/). They are the same figures used in the project report.
+Static PNG versions of the main diagrams (runtime architecture, request flow, workflows, order life-cycle, ER diagram, notification sequence) are in [`diagrams/`](diagrams/). They are the same figures used in the project report.
 
 ## 1. System overview
 
@@ -8,7 +8,7 @@ Static PNG versions of the main diagrams (runtime architecture, request flow, wo
 flowchart LR
     subgraph Browser
         C["Customer pages<br/>menu · cart + order confirmation<br/>(Thymeleaf HTML + vanilla JS)"]
-        S["Kitchen page (availability, incoming orders)<br/>Staff page (ready orders, OTP, handover)"]
+        S["Kitchen page (availability, incoming orders)<br/>Staff page (ready orders, pickup)"]
         P["Postman"]
     end
 
@@ -16,9 +16,9 @@ flowchart LR
         direction TB
         SEC["Spring Security filter chain<br/>form login · HTTP Basic · roles"]
         MVC["@Controller<br/>HomeController · StaffController"]
-        REST["@RestController<br/>Menu · Order · Payment · Demo"]
+        REST["@RestController<br/>Menu · Order · Demo"]
         ADV["@RestControllerAdvice<br/>GlobalExceptionHandler"]
-        SVC["@Service (@Transactional)<br/>MenuService · OrderService · PaymentService<br/>PickupCodeService · NotificationClient"]
+        SVC["@Service (@Transactional)<br/>MenuService · OrderService<br/>PickupCodeService · NotificationClient"]
         AOP["LoggingAspect (@Around)"]
         CACHE[("Caffeine cache<br/>menu · popularItems")]
         REPO["Spring Data JPA repositories<br/>+ HQL @Query"]
@@ -59,20 +59,18 @@ noq-app/src/main/java/com/noq
 ├── restcontroller/                  JSON API
 │   ├── MenuRestController.java      /api/menu/**
 │   ├── OrderRestController.java     /api/orders/**
-│   ├── PaymentRestController.java   /api/orders/{ref}/payments/**
 │   └── DemoRestController.java      /api/demo/** (viva demos)
 ├── service/
 │   ├── MenuService.java             menu reads, Kitchen availability switch, @Cacheable, cache eviction after commit
-│   ├── OrderService.java            checkout, status transitions, cancel (API), OTP check and handover
-│   ├── PaymentService.java          counter payments (CashPayment)
+│   ├── OrderService.java            checkout, status transitions, cancel (API), one-step pickup
 │   ├── PickupCodeService.java       SecureRandom OTP, BCrypt hash, attempt limiter
 │   ├── OrderReadyEvent.java         event published when an order becomes READY_FOR_PICKUP
 │   ├── NotificationClient.java      RestClient call to the microservice (after commit)
 │   └── ConceptDemoService.java      SessionFactory/Session/Transaction + IoC container demo
 ├── repository/                      Spring Data JPA interfaces (2 HQL queries)
-├── entity/                          MenuItem, CustomerOrder, OrderItem, Payment(+CashPayment), StaffUser
+├── entity/                          MenuItem, CustomerOrder, OrderItem, StaffUser
 ├── dto/                             validated request/response records
-├── enums/                           Category, OrderStatus, PaymentMethod, PaymentStatus, StaffRole
+├── enums/                           Category, OrderStatus, StaffRole
 ├── exception/                       ApiException, ApiError, GlobalExceptionHandler
 └── security/                        SecurityConfig, StaffUserDetailsService
 
@@ -94,7 +92,6 @@ noq-notification-service/src/main/java/com/noq/notification
 erDiagram
     MENU_ITEM ||--o{ ORDER_ITEM : "appears in"
     CUSTOMER_ORDER ||--|{ ORDER_ITEM : "contains"
-    CUSTOMER_ORDER ||--o{ PAYMENT : "paid by (attempts)"
 
     MENU_ITEM {
         bigint id PK
@@ -103,7 +100,6 @@ erDiagram
         varchar category
         decimal price
         varchar image_url
-        int available_quantity
         bit available "Kitchen Available / Not available switch"
         bit active "false = hidden from the menu"
         int popularity_count
@@ -114,8 +110,6 @@ erDiagram
         varchar order_reference UK "NQ-2026-XXXXX"
         varchar pickup_otp_hash "BCrypt, never the OTP"
         varchar status
-        varchar payment_method
-        varchar payment_status
         decimal subtotal
         decimal total_amount
         varchar idempotency_key UK
@@ -133,15 +127,6 @@ erDiagram
         int quantity
         decimal line_total
     }
-    PAYMENT {
-        bigint id PK
-        bigint order_id FK
-        varchar payment_type "discriminator: CASH"
-        decimal amount
-        varchar status
-        datetime created_at
-        varchar received_by "CASH only"
-    }
     STAFF_USER {
         bigint id PK
         varchar username UK
@@ -151,28 +136,6 @@ erDiagram
     }
 ```
 
-### Payment inheritance (SINGLE_TABLE)
-
-```mermaid
-classDiagram
-    class Payment {
-        <<abstract, @Entity>>
-        Long id
-        CustomerOrder customerOrder
-        BigDecimal amount
-        PaymentStatus status
-        getPaymentType()*
-    }
-    class CashPayment {
-        <<@DiscriminatorValue CASH>>
-        String receivedBy
-    }
-    Payment <|-- CashPayment
-```
-
-Rows live in **one** `payment` table; Hibernate writes `payment_type = 'CASH'` and uses that column to decide which
-Java class to instantiate when reading. Another way of paying would be one more subclass with its own discriminator value.
-
 ## 4. Order status life-cycle
 
 ```mermaid
@@ -180,14 +143,13 @@ stateDiagram-v2
     [*] --> PREPARING : customer places order
     PREPARING --> READY_FOR_PICKUP : Kitchen "Ready for Pickup" → notification service called
     PREPARING --> CANCELLED : API only
-    READY_FOR_PICKUP --> COLLECTED : Staff verify OTP, then "Confirm handover" (order must be PAID)
+    READY_FOR_PICKUP --> COLLECTED : Staff "Verify & Complete Pickup": one call checks the order is ready and the OTP is right
     COLLECTED --> [*]
-    CANCELLED --> [*] : stock restored, PAID → REFUNDED
+    CANCELLED --> [*] : popularity reversed
 ```
 
 The Kitchen page lists PREPARING orders; the Staff page lists READY_FOR_PICKUP orders.
-Payment status is separate: `PENDING → PAID` (recorded at the counter when staff verify a correct OTP), and `PAID → REFUNDED` when a paid
-order is cancelled.
+NoQ does not track payment: the customer pays by hand at the counter, and the order's status alone drives the workflow.
 
 ## 5. Request flow — placing an order
 
@@ -211,19 +173,20 @@ sequenceDiagram
     A->>OS: begin transaction, start timer
     OS->>R: findByIdempotencyKey (duplicate? → 409)
     loop each item
-        OS->>R: findWithLockById(menuItemId)  SELECT … FOR UPDATE, ascending id order (DB, never the cache)
-        OS->>OS: active? available? enough stock? (→ 400/409)
-        OS->>OS: reduceStock(), popularity += qty, snapshot name & price
+        OS->>R: findById(menuItemId)  (DB, never the cache)
+        OS->>OS: active? available? (→ 400/409)  no stock check
+        OS->>R: adjustPopularity(id, +qty)  one atomic UPDATE, no lock
+        OS->>OS: snapshot name & price
     end
     OS->>OS: totals on the server, order reference, SecureRandom OTP → BCrypt hash
     OS->>R: save(order) (cascades order items)
     OS->>OS: register "evict menu caches after commit"
-    A->>DB: COMMIT — UPDATE menu_item ... WHERE version=? (optimistic lock)
+    A->>DB: COMMIT
     A->>A: after commit: clear menu + popularItems caches
     A-->>RC: OrderPlacedResponse (contains the plain OTP once)
     RC-->>JS: 201 Created + Location
     JS->>JS: keep the response in localStorage (so a refresh keeps the OTP), clear cart
-    JS-->>U: show the order confirmation: reference, items, total, payment status, pickup OTP
+    JS-->>U: show the order confirmation: reference, items, total, pickup OTP
 ```
 
 ## 6. Request flow — order becomes READY_FOR_PICKUP (microservice integration)
@@ -296,7 +259,7 @@ sequenceDiagram
 | `GET /api/orders/{ref}` | everyone, but the **service** checks the `X-Pickup-Otp` header (or staff login) |
 | `/staff/kitchen`, `PATCH /api/menu/{id}/availability`, `PATCH /api/orders/{ref}/status` | KITCHEN |
 | `GET /api/orders` | KITCHEN or STAFF |
-| `POST .../verify-pickup`, `POST .../collect`, `POST .../payments/counter-confirmation`, `/api/demo/**`, `/actuator/**` | STAFF |
+| `POST .../pickup`, `/api/demo/**`, `/actuator/**` | STAFF |
 | `/staff` | KITCHEN or STAFF (redirects the kitchen to `/staff/kitchen`) |
 
 Unauthenticated API calls get **401** JSON, wrong role gets **403** JSON; browser pages redirect to `/staff/login`.

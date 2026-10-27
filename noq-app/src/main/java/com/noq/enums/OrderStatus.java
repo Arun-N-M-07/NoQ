@@ -1,7 +1,7 @@
 package com.noq.enums;
 
 /**
- * Food status of an order (kept separate from {@link PaymentStatus}).
+ * Status of an order.
  * <pre>
  * PREPARING -> READY_FOR_PICKUP -> COLLECTED
  *     \______> CANCELLED (only while still being prepared)

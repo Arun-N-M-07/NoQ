@@ -34,7 +34,7 @@
                      th:classappend="${item.orderable} ? '' : 'sold-out'"
                      th:attr="data-id=${item.id}, data-name=${item.name}, data-price=${item.price},
                               data-category=${item.category}, data-popularity=${item.popularityCount},
-                              data-stock=${item.availableQuantity}, data-orderable=${item.orderable},
+                              data-orderable=${item.orderable},
                               data-image=${item.imageUrl}, data-emoji=${item.categoryEmoji}, data-order=${stat.index}">
                 <div class="thumb">
                     <img th:if="${item.imageUrl}" th:src="${item.imageUrl}" th:alt="${item.name}" loading="lazy"
@@ -47,7 +47,7 @@
                     <div class="foot">
                         <span class="price" th:text="|₹${item.price}|">₹0</span>
                         <span class="stock" th:classappend="${item.orderable} ? '' : 'out'"
-                              th:text="${item.orderable} ? 'Available' : (${item.available} ? 'Sold out' : 'Not available')">Available</span>
+                              th:text="${item.orderable} ? 'Available' : 'Not available'">Available</span>
                     </div>
                 </div>
                 <div data-cart-control>

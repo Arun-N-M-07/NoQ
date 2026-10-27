@@ -33,10 +33,7 @@ public class MenuItem {
     @Column(name = "image_url", length = 300)
     private String imageUrl;
 
-    @Column(name = "available_quantity", nullable = false)
-    private int availableQuantity;
-
-    /** Staff switch: false = "sold out" even if stock is left. */
+    /** Kitchen switch: true = customers can order it, false = "Not available" (still listed, greyed out). */
     @Column(nullable = false)
     private boolean available = true;
 
@@ -49,28 +46,15 @@ public class MenuItem {
 
     /**
      * Optimistic locking: Hibernate adds "WHERE version = ?" to every UPDATE and increments it.
-     * If two checkouts change the same item at the same time, the second one fails instead of
-     * silently overwriting the stock.
+     * If two kitchen users edit the same item at the same time, the second one fails instead of
+     * silently overwriting the first.
      */
     @Version
     private Long version;
 
     /** True when a customer may add this item to an order right now. */
     public boolean isOrderable() {
-        return active && available && availableQuantity > 0;
-    }
-
-    public void reduceStock(int quantity) {
-        if (quantity > availableQuantity) {
-            throw new IllegalStateException("Not enough stock for " + name);
-        }
-        availableQuantity -= quantity;
-        popularityCount += quantity;
-    }
-
-    public void restoreStock(int quantity) {
-        availableQuantity += quantity;
-        popularityCount = Math.max(0, popularityCount - quantity);
+        return active && available;
     }
 
     public Long getId() { return id; }
@@ -79,7 +63,6 @@ public class MenuItem {
     public Category getCategory() { return category; }
     public BigDecimal getPrice() { return price; }
     public String getImageUrl() { return imageUrl; }
-    public int getAvailableQuantity() { return availableQuantity; }
     public boolean isAvailable() { return available; }
     public void setAvailable(boolean available) { this.available = available; }
     public boolean isActive() { return active; }

@@ -22,9 +22,9 @@ import java.util.List;
  * <p>
  * {@code @Cacheable}: the first call runs the method and stores the result in the Caffeine cache;
  * later calls with the same key return the stored list WITHOUT running the method (no SQL query).
- * {@link #evictMenuCaches()}: after availability, stock or popularity changes, the cached lists are thrown away
+ * {@link #evictMenuCaches()}: after availability or popularity changes, the cached lists are thrown away
  * AFTER the transaction commits, so the next read loads fresh data. Checkout never uses these cached lists -
- * it always reads stock from the database.
+ * it always reads availability from the database.
  */
 @Service
 public class MenuService {
@@ -65,7 +65,7 @@ public class MenuService {
         return MenuItemResponse.from(find(id));
     }
 
-    /** Kitchen page switch: false = "Not available" (still listed, greyed out, rejected at checkout). Stock is untouched. */
+    /** Kitchen page switch: false = "Not available" (still listed, greyed out, rejected at checkout). */
     @Transactional
     public MenuItemResponse updateAvailability(Long id, boolean available) {
         MenuItem item = find(id);
@@ -77,7 +77,7 @@ public class MenuService {
     /**
      * Throws the cached menu lists away once the current transaction has COMMITTED (immediately if there is none).
      * Evicting earlier would let another request re-cache the old rows before our commit; a rollback evicts nothing.
-     * Also called by OrderService after orders change stock or popularity.
+     * Also called by OrderService after orders change popularity.
      */
     public void evictMenuCaches() {
         if (TransactionSynchronizationManager.isSynchronizationActive()) {

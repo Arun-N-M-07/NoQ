@@ -8,7 +8,7 @@ import jakarta.validation.constraints.Size;
 import java.util.List;
 
 /**
- * Checkout request. The browser sends only item ids and quantities (payment is always at the counter).
+ * Checkout request. The browser sends only item ids and quantities.
  * Totals are always calculated on the server.
  */
 public record PlaceOrderRequest(

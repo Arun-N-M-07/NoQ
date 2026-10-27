@@ -1,7 +1,7 @@
 # NoQ — Smart Canteen Pre-Ordering & Queue Management
 
 > **No Queue. Just Order.** Students browse the live canteen menu, pre-order, get an order reference and a
-> 6-digit pickup OTP, pay at the counter, and collect their food
+> 6-digit pickup OTP, and collect (and pay for) their food at the counter
 > when it's ready. The kitchen marks dishes available and orders ready; counter staff check the pickup code and hand the food over.
 
 College mini-project for **IT23502 — Web Programming** (Unit IV: Advanced Frameworks, Unit V: Web Services).
@@ -24,7 +24,7 @@ College mini-project for **IT23502 — Web Programming** (Unit IV: Advanced Fram
 | [docs/CODE_WALKTHROUGH.md](docs/CODE_WALKTHROUGH.md) | Every important class explained, and the life of one order step by step |
 | [docs/schema-mysql.sql](docs/schema-mysql.sql) | MySQL DDL matching the entities (see the note at the top of the file) |
 | [docs/screenshots/](docs/screenshots/) | 14 real screenshots of the running app (customer, Kitchen, Staff, desktop and phone); the list is in REQUIREMENTS_MAP |
-| [docs/diagrams/](docs/diagrams/) | Static diagrams (architecture, request flow, workflows, order life-cycle, ER, payment inheritance, notification sequence) |
+| [docs/diagrams/](docs/diagrams/) | Static diagrams (architecture, request flow, workflows, order life-cycle, ER, notification sequence) |
 | [docs/TeamNo_NoQ_Report.docx](docs/TeamNo_NoQ_Report.docx) | The Word version of the project report for submission |
 | [postman/NoQ.postman_collection.json](postman/NoQ.postman_collection.json) | 35 Postman requests with automatic tests |
 
@@ -95,22 +95,25 @@ Open two terminals in the project root.
 | Username | Password | Role | Can do |
 |---|---|---|---|
 | `kitchen` | `kitchen123` | KITCHEN | Kitchen page: dish availability, incoming orders, *Ready for Pickup* |
-| `staff` | `staff123` | STAFF | Staff page: ready orders, OTP check (records the counter payment), *Confirm handover* |
+| `staff` | `staff123` | STAFF | Staff page: ready orders, *Verify & Complete Pickup* |
 
 Each login can only do its own job (the server returns 403 otherwise). Customers never log in. There is no admin:
-the menu, prices and stock come from `data.sql`.
+the menu and prices come from `data.sql`. There is no stock count: a dish can be ordered while its `available` switch is on.
+
+**Upgrading an existing MySQL database:** the stock column and all payment tables/columns were removed. Hibernate's `ddl-auto=update`
+never drops them, and the old `NOT NULL` payment columns would make new orders fail, so run [`docs/migrate-existing-db.sql`](docs/migrate-existing-db.sql)
+once on a database created by an older version (fresh databases are unaffected).
 
 ### Two-minute demo script
 
 1. Open the menu, filter **Meals**, search "coffee", add a few items, open the cart.
-2. Click *Place order* (payment is always at the counter). The confirmation screen shows the order reference, the items, the total,
-   the payment status, the pickup code and **Status: PREPARING**.
+2. Click *Place order*. The confirmation screen shows the order reference, the items, the total,
+   the pickup code and **Status: PREPARING**.
 3. In another browser window log in as `kitchen` (you land on **Kitchen**) → *Incoming Orders*. Click *Ready for Pickup*.
    The notification service terminal logs `NOTIFY customer: order … is READY`, and the customer's open confirmation
    switches to **READY FOR PICKUP** within 5 seconds.
-4. In a third window log in as `staff` (you land on the Staff page, ready orders only). Type a wrong OTP and *Verify OTP* (rejected, nothing paid),
-   then the right OTP → payment recorded (PAID) and "OTP verified. Food can be delivered." → *Confirm handover*. The order is COLLECTED, leaves the
-   list, and the customer's confirmation shows "Collected — enjoy your meal!".
+4. In a third window log in as `staff` (you land on the Staff page, ready orders only). Type a wrong OTP and click *Verify & Complete Pickup* (rejected, nothing changes), then the right OTP:
+   one click, and the order is COLLECTED (hand over the food and take the money by hand; NoQ does not track payment). It leaves the list, and the customer's confirmation shows "Collected — enjoy your meal!".
 5. Stop the notification service and mark another order ready — it still becomes READY_FOR_PICKUP; the app logs a warning.
 6. Open **Kitchen** → *Menu Availability*, click *Mark not available* on a dish: on the customer menu it is greyed out
    ("Not available") and cannot be added; a cart that already holds it can't check out. *Incoming Orders* shows each new
@@ -191,11 +194,11 @@ following requests use. Staff requests use HTTP Basic auth with the demo account
 │       ├── NoqApplication.java
 │       ├── controller/              Thymeleaf page controllers (@Controller)
 │       ├── restcontroller/          JSON API (@RestController)
-│       ├── service/                 business logic, @Transactional, caching, payments, notifications
+│       ├── service/                 business logic, @Transactional, caching, notifications
 │       ├── repository/              Spring Data JPA repositories + HQL queries
-│       ├── entity/                  JPA entities (incl. Payment inheritance)
+│       ├── entity/                  JPA entities
 │       ├── dto/                     request/response records with validation
-│       ├── enums/                   OrderStatus, PaymentStatus, Category ...
+│       ├── enums/                   OrderStatus, Category ...
 │       ├── exception/               ApiException + @RestControllerAdvice
 │       ├── aspect/                  AOP logging aspect
 │       └── security/                Spring Security configuration
@@ -216,13 +219,12 @@ A clean history that mirrors the build phases (useful to show in the viva):
 2. `feat(menu): MenuItem entity, repository, service, sample data`
 3. `feat(order): checkout with server-side validation, stock deduction and order items`
 4. `feat(order): order reference, hashed pickup OTP, status transitions and cancellation`
-5. `feat(payment): counter payment records with single-table inheritance`
 6. `feat(ui): customer menu, cart with live order confirmation, Kitchen and Staff pages`
 7. `feat(api): REST endpoints, validation and centralized exception handling`
 8. `feat(security): staff login, role-based authorization, JSON 401/403`
 9. `feat: HQL queries, AOP logging, Caffeine caching, Hibernate Session demo`
 10. `feat(notification): notification microservice and RestClient integration`
-11. `test: menu, order, payment, pickup, authorization and microservice tests`
+11. `test: menu, order, pickup, authorization and microservice tests`
 12. `docs: README, report, architecture, API, viva guide, Postman collection`
 
 Push to GitHub: check `git remote -v`; if no remote is set yet, add one with
@@ -253,7 +255,7 @@ Push to GitHub: check `git remote -v`; if no remote is set yet, add one with
 
 ## Honest limitations
 
-- **Payment is at the counter only** (cash or UPI handed to staff; it is recorded when they verify the OTP). There is no online payment.
+- **NoQ does not handle payment at all.** The customer pays by hand at the counter; the application neither records nor checks it. A correct OTP on a READY_FOR_PICKUP order is all it needs to complete pickup.
 - The pickup-OTP attempt limiter is in memory (resets on restart, single server). It counts attempts atomically, so
   parallel guessing can't get past the 5-attempt limit.
 - `ddl-auto=update` adds new tables/columns but never changes existing ones (type, length, NOT NULL). Enum fields are
@@ -266,5 +268,5 @@ Push to GitHub: check `git remote -v`; if no remote is set yet, add one with
   serve the order by reference.
 - There is no Cancel button: an order can only be cancelled through the API (`PATCH …/status` `CANCELLED`) while it is
   still PREPARING; a ready order that is never collected stays on the Staff page.
-- A MySQL database used by an older version that still holds online-payment orders (`payment_method = 'ONLINE'`,
-  `payment_status = 'FAILED'` or `payment_type = 'ONLINE'` rows) must be cleaned up before use; a fresh database is unaffected.
+- A MySQL database created by an older version needs `docs/migrate-existing-db.sql` run once (it drops the old payment table
+  and payment columns); a fresh database is unaffected.

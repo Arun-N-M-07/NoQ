@@ -64,7 +64,6 @@ class MenuApiTest {
     @Test
     void kitchenToggleAvailabilityIsSavedAndEnforcedByCheckout() throws Exception {
         long id = 20; // Chocolate Donut
-        int stock = menuItemRepository.findById(id).orElseThrow().getAvailableQuantity();
         String order = "{\"items\":[{\"menuItemId\":" + id + ",\"quantity\":1}]}";
 
         setAvailable(id, "{\"available\":false}", KITCHEN).andExpect(status().isOk()).andExpect(jsonPath("$.available").value(false));
@@ -74,7 +73,7 @@ class MenuApiTest {
         mvc.perform(get("/api/menu/" + id)) // saved in the database, and the customer menu sees it
                 .andExpect(jsonPath("$.available").value(false))
                 .andExpect(jsonPath("$.orderable").value(false))
-                .andExpect(jsonPath("$.availableQuantity").value(stock));
+                .andExpect(jsonPath("$.availableQuantity").doesNotExist()); // no stock count in the API
         mvc.perform(get("/")).andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.content()
                 .string(containsString("Not available")));
 
@@ -83,7 +82,6 @@ class MenuApiTest {
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.message").value("Chocolate Donut is not available right now"));
         assertThat(orderRepository.count()).as("no order saved").isEqualTo(ordersBefore);
-        assertThat(menuItemRepository.findById(id).orElseThrow().getAvailableQuantity()).as("no stock taken").isEqualTo(stock);
 
         setAvailable(id, "{\"available\":true}", KITCHEN).andExpect(status().isOk());
         mvc.perform(post("/api/orders").contentType(MediaType.APPLICATION_JSON).content(order)).andExpect(status().isCreated());
@@ -100,10 +98,13 @@ class MenuApiTest {
     }
 
     @Test
-    void soldOutItemIsNotOrderable() throws Exception {
-        mvc.perform(get("/api/menu/16")) // Margherita Pizza: stock 0
+    void unavailableItemIsNotOrderable() throws Exception {
+        mvc.perform(get("/api/menu/22")) // Garden Salad Bowl: marked not available
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.orderable").value(false));
+        mvc.perform(get("/api/menu/16")) // Margherita Pizza: available, so orderable (there is no stock count)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.orderable").value(true));
         mvc.perform(get("/api/menu/9999")).andExpect(status().isNotFound());
     }
 
@@ -120,7 +121,8 @@ class MenuApiTest {
     void realLoginsHaveExactlyTheirOwnRole() throws Exception {
         // real BCrypt logins against the seeded staff_user table: kitchen / kitchen123 (KITCHEN), staff / staff123 (STAFF)
         setAvailable(2, "{\"available\":true}", httpBasic("kitchen", "kitchen123")).andExpect(status().isOk());
-        mvc.perform(post("/api/orders/NQ-2026-AAAAA/payments/counter-confirmation").with(httpBasic("kitchen", "kitchen123")))
+        mvc.perform(post("/api/orders/NQ-2026-AAAAA/pickup").with(httpBasic("kitchen", "kitchen123"))
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"otp\":\"123456\"}"))
                 .andExpect(status().isForbidden());
         mvc.perform(get("/api/orders").param("status", "READY_FOR_PICKUP").with(httpBasic("staff", "staff123"))).andExpect(status().isOk());
         setAvailable(2, "{\"available\":true}", httpBasic("staff", "staff123")).andExpect(status().isForbidden());

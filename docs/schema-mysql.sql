@@ -1,8 +1,8 @@
 -- NoQ database schema. It matches the @Entity classes of the final version
 -- (Hibernate creates these tables itself with spring.jpa.hibernate.ddl-auto=update).
--- History: the file was first dumped from a real MySQL 8.4.9 server for an earlier version; when online payment was
--- removed, the two columns payment.gateway and payment.transaction_reference were deleted from it BY HAND. It has not
--- been dumped again from a fresh MySQL run of the final version.
+-- History: the file was first dumped from a real MySQL 8.4.9 server for an earlier version; the payment table, the payment
+-- columns of customer_order and menu_item.available_quantity were later deleted from it BY HAND. It has not been dumped
+-- again from a fresh MySQL run of the final version. A database created by an older version: see docs/migrate-existing-db.sql.
 -- Enum fields are plain VARCHAR(20) (columnDefinition), not MySQL ENUM or CHECK constraints, so adding
 -- an enum value in Java never needs an ALTER TABLE.
 -- The application creates these tables itself; this file is for the report and for manual setup:
@@ -16,8 +16,6 @@ CREATE TABLE `customer_order` (
   `created_at` datetime(6) NOT NULL,
   `idempotency_key` varchar(64) DEFAULT NULL,
   `order_reference` varchar(20) NOT NULL,
-  `payment_method` varchar(20) NOT NULL,
-  `payment_status` varchar(20) NOT NULL,
   `pickup_otp_hash` varchar(100) NOT NULL,
   `status` varchar(20) NOT NULL,
   `subtotal` decimal(10,2) NOT NULL,
@@ -33,7 +31,6 @@ CREATE TABLE `menu_item` (
   `id` bigint NOT NULL AUTO_INCREMENT,
   `active` bit(1) NOT NULL,
   `available` bit(1) NOT NULL,
-  `available_quantity` int NOT NULL,
   `category` varchar(20) NOT NULL,
   `description` varchar(300) DEFAULT NULL,
   `image_url` varchar(300) DEFAULT NULL,
@@ -57,18 +54,6 @@ CREATE TABLE `order_item` (
   KEY `FK1my78itket7mhyn3wt4g6j4sq` (`menu_item_id`),
   CONSTRAINT `FK1my78itket7mhyn3wt4g6j4sq` FOREIGN KEY (`menu_item_id`) REFERENCES `menu_item` (`id`),
   CONSTRAINT `FKgv4bnmo7cbib2nh0b2rw9yvir` FOREIGN KEY (`order_id`) REFERENCES `customer_order` (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-CREATE TABLE `payment` (
-  `payment_type` varchar(20) NOT NULL,
-  `id` bigint NOT NULL AUTO_INCREMENT,
-  `amount` decimal(10,2) NOT NULL,
-  `created_at` datetime(6) NOT NULL,
-  `status` varchar(20) NOT NULL,
-  `received_by` varchar(50) DEFAULT NULL,
-  `order_id` bigint NOT NULL,
-  PRIMARY KEY (`id`),
-  KEY `FKjb82tm1s8qg4mx6eqog4fsctj` (`order_id`),
-  CONSTRAINT `FKjb82tm1s8qg4mx6eqog4fsctj` FOREIGN KEY (`order_id`) REFERENCES `customer_order` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `staff_user` (
   `id` bigint NOT NULL AUTO_INCREMENT,

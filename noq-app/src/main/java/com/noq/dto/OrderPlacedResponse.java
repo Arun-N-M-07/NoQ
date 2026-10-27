@@ -1,7 +1,6 @@
 package com.noq.dto;
 
 import com.noq.enums.OrderStatus;
-import com.noq.enums.PaymentStatus;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -14,7 +13,6 @@ public record OrderPlacedResponse(
         String orderReference,
         String pickupOtp,
         OrderStatus status,
-        PaymentStatus paymentStatus,
         BigDecimal totalAmount,
         String message,
         List<OrderItemResponse> items) {

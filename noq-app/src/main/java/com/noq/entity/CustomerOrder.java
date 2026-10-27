@@ -1,8 +1,6 @@
 package com.noq.entity;
 
 import com.noq.enums.OrderStatus;
-import com.noq.enums.PaymentMethod;
-import com.noq.enums.PaymentStatus;
 import jakarta.persistence.*;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
@@ -15,7 +13,7 @@ import java.util.List;
 /**
  * An order placed by a customer. Named CustomerOrder because ORDER is a reserved SQL word.
  * <p>
- * Relationships: one order has many {@link OrderItem}s and many {@link Payment} attempts.
+ * Relationships: one order has many {@link OrderItem}s.
  */
 @Entity
 @Table(name = "customer_order", indexes = @Index(name = "idx_order_status_created", columnList = "status, created_at"))
@@ -36,15 +34,6 @@ public class CustomerOrder {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, columnDefinition = "varchar(20)") // plain VARCHAR: no MySQL ENUM/CHECK, so a new enum value needs no ALTER TABLE
     private OrderStatus status = OrderStatus.PREPARING; // the kitchen starts on every new order
-
-    /** Always PAY_AT_COUNTER (the only payment option); kept so the existing NOT NULL column is still filled. */
-    @Enumerated(EnumType.STRING)
-    @Column(name = "payment_method", nullable = false, columnDefinition = "varchar(20)")
-    private PaymentMethod paymentMethod = PaymentMethod.PAY_AT_COUNTER;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "payment_status", nullable = false, columnDefinition = "varchar(20)")
-    private PaymentStatus paymentStatus = PaymentStatus.PENDING;
 
     @Column(nullable = false, precision = 10, scale = 2)
     private BigDecimal subtotal;
@@ -76,19 +65,10 @@ public class CustomerOrder {
     @OrderBy("id")
     private List<OrderItem> items = new ArrayList<>();
 
-    @OneToMany(mappedBy = "customerOrder", cascade = CascadeType.ALL)
-    @OrderBy("id")
-    private List<Payment> payments = new ArrayList<>();
-
     /** Keeps both sides of the bidirectional relationship in sync. */
     public void addItem(OrderItem item) {
         item.setCustomerOrder(this);
         items.add(item);
-    }
-
-    public void addPayment(Payment payment) {
-        payment.setCustomerOrder(this);
-        payments.add(payment);
     }
 
     public Long getId() { return id; }
@@ -98,8 +78,6 @@ public class CustomerOrder {
     public void setPickupOtpHash(String pickupOtpHash) { this.pickupOtpHash = pickupOtpHash; }
     public OrderStatus getStatus() { return status; }
     public void setStatus(OrderStatus status) { this.status = status; }
-    public PaymentStatus getPaymentStatus() { return paymentStatus; }
-    public void setPaymentStatus(PaymentStatus paymentStatus) { this.paymentStatus = paymentStatus; }
     public BigDecimal getSubtotal() { return subtotal; }
     public void setSubtotal(BigDecimal subtotal) { this.subtotal = subtotal; }
     public BigDecimal getTotalAmount() { return totalAmount; }
@@ -111,5 +89,4 @@ public class CustomerOrder {
     public LocalDateTime getCompletedAt() { return completedAt; }
     public void setCompletedAt(LocalDateTime completedAt) { this.completedAt = completedAt; }
     public List<OrderItem> getItems() { return items; }
-    public List<Payment> getPayments() { return payments; }
 }

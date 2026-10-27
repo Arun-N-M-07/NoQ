@@ -25,7 +25,7 @@ import java.io.IOException;
  * <ul>
  *   <li>Customers (anonymous): menu, place order, and read their own order back with ref + OTP.</li>
  *   <li>KITCHEN: Kitchen page - dish availability, incoming orders, "Ready for Pickup".</li>
- *   <li>STAFF: Staff page - ready orders, counter payment, pickup OTP check and handover.</li>
+ *   <li>STAFF: Staff page - ready orders and pickup (OTP check + handover in one step).</li>
  * </ul>
  * Browser pages use a login form (session cookie); Postman uses HTTP Basic authentication.
  */
@@ -64,7 +64,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/orders/*").permitAll() // one order (not the list)
                         .requestMatchers(HttpMethod.GET, "/api/orders").hasAnyRole("KITCHEN", "STAFF") // each page's list
                         .requestMatchers(HttpMethod.PATCH, "/api/orders/*/status").hasRole("KITCHEN") // Ready for Pickup
-                        // everything else under /api (counter payment, OTP check, handover, demos) + actuator
+                        // everything else under /api (pickup, demos) + actuator
                         .requestMatchers("/api/**", "/actuator/**").hasRole("STAFF")
                         .anyRequest().authenticated())
                 .formLogin(form -> form

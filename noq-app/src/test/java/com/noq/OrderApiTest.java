@@ -14,7 +14,6 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
-import org.springframework.transaction.support.TransactionTemplate;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.matchesPattern;
@@ -24,8 +23,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * End-to-end order rules through the REST API: checkout validation, stock, status transitions,
- * payments, pickup OTP and staff authorization. The notification service is pointed at a dead
+ * End-to-end order rules through the REST API: checkout validation, availability, status transitions,
+ * pickup OTP and staff authorization. The notification service is pointed at a dead
  * port on purpose, to prove that READY_FOR_PICKUP still works when it is down.
  */
 @SpringBootTest(properties = {"noq.notification.base-url=http://localhost:1"})
@@ -36,11 +35,10 @@ class OrderApiTest {
     @Autowired MockMvc mvc;
     @Autowired MenuItemRepository menuItemRepository;
     @Autowired CustomerOrderRepository orderRepository;
-    @Autowired TransactionTemplate tx;
     @Autowired JdbcTemplate jdbc;
 
     private static final RequestPostProcessor KITCHEN = user("kitchen").roles("KITCHEN"); // Kitchen page: Ready for Pickup
-    private static final RequestPostProcessor STAFF = user("staff").roles("STAFF");       // Staff page: payment, OTP, handover
+    private static final RequestPostProcessor STAFF = user("staff").roles("STAFF");       // Staff page: pickup
 
     /** Places an order and returns {reference, otp}. */
     private String[] placeOrder(long itemId, int qty) throws Exception {
@@ -63,14 +61,13 @@ class OrderApiTest {
         return mvc.perform(get("/api/orders/" + ref).header("X-Pickup-Otp", otp));
     }
 
-    private int stockOf(long id) {
-        return menuItemRepository.findById(id).orElseThrow().getAvailableQuantity();
+    private int popularityOf(long id) {
+        return menuItemRepository.findById(id).orElseThrow().getPopularityCount();
     }
 
     @Test
-    void placingAnOrderDeductsStockAndReturnsReferenceAndOtp() throws Exception {
-        int stockBefore = stockOf(3);
-        int popularityBefore = menuItemRepository.findById(3L).orElseThrow().getPopularityCount();
+    void placingAnOrderReturnsReferenceAndOtp() throws Exception {
+        int popularityBefore = popularityOf(3);
 
         mvc.perform(post("/api/orders").contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -81,15 +78,14 @@ class OrderApiTest {
                 .andExpect(jsonPath("$.pickupOtp", matchesPattern("\\d{6}")))
                 .andExpect(jsonPath("$.totalAmount").value(60.0)) // 3 x 20.00, browser "total" ignored
                 .andExpect(jsonPath("$.status").value("PREPARING")) // the kitchen starts straight away
-                .andExpect(jsonPath("$.paymentStatus").value("PENDING"))
+                .andExpect(jsonPath("$.paymentStatus").doesNotExist()) // NoQ does not track payment
                 // the confirmation screen's order summary, merged into one line, with the server's prices
                 .andExpect(jsonPath("$.items.length()").value(1))
                 .andExpect(jsonPath("$.items[0].name").value("Samosa (2 pcs)"))
                 .andExpect(jsonPath("$.items[0].quantity").value(3))
                 .andExpect(jsonPath("$.items[0].lineTotal").value(60.0));
 
-        assertThat(stockOf(3)).isEqualTo(stockBefore - 3);
-        assertThat(menuItemRepository.findById(3L).orElseThrow().getPopularityCount()).isEqualTo(popularityBefore + 3);
+        assertThat(popularityOf(3)).isEqualTo(popularityBefore + 3);
     }
 
     @Test
@@ -99,10 +95,8 @@ class OrderApiTest {
                 {"{\"items\":[{\"menuItemId\":1,\"quantity\":0}]}", "400"},      // bad quantity
                 {"{}", "400"},                                                                                  // no items at all
                 {"{\"items\":[{\"menuItemId\":9999,\"quantity\":1}]}", "400"},   // unknown item
-                {"{\"items\":[{\"menuItemId\":16,\"quantity\":1}]}", "409"},     // sold out
                 {"{\"items\":[{\"menuItemId\":23,\"quantity\":1}]}", "409"},     // inactive
                 {"{\"items\":[{\"menuItemId\":22,\"quantity\":1}]}", "409"},     // marked not available
-                {"{\"items\":[{\"menuItemId\":12,\"quantity\":16}]}", "409"},    // more than stock (15)
                 {"{\"items\": [ this is not json", "400"},                                                      // malformed JSON
         };
         for (String[] c : cases) {
@@ -115,23 +109,27 @@ class OrderApiTest {
     @Test
     void duplicateSubmissionIsRejected() throws Exception {
         String body = "{\"items\":[{\"menuItemId\":7,\"quantity\":1}],\"idempotencyKey\":\"test-key-123\"}";
-        int stockBefore = stockOf(7);
+        int popularityBefore = popularityOf(7);
         mvc.perform(post("/api/orders").contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isCreated());
         mvc.perform(post("/api/orders").contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isConflict());
-        assertThat(stockOf(7)).as("stock deducted only once").isEqualTo(stockBefore - 1);
+        assertThat(popularityOf(7)).as("counted only once").isEqualTo(popularityBefore + 1);
+    }
+
+    private org.springframework.test.web.servlet.ResultActions pickup(String ref, String otp, RequestPostProcessor who) throws Exception {
+        return mvc.perform(post("/api/orders/" + ref + "/pickup").with(who).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"otp\":\"" + otp + "\"}"));
     }
 
     @Test
-    void counterOrderFullLifecycleWithPaymentAndPickup() throws Exception {
+    void orderLifecycleFromPlacingToOtpPickup() throws Exception {
         String[] order = placeOrder(1, 1);
         String ref = order[0], otp = order[1];
+        String wrongOtp = otp.equals("000000") ? "111111" : "000000";
 
-        String pickup = "{\"otp\":\"" + otp + "\"}";
-        // COLLECTED only through the OTP check, never by a status change; not before the kitchen marked it ready
+        // COLLECTED only through the pickup call, never by a status change; not before the kitchen marked it ready
         mvc.perform(patch("/api/orders/" + ref + "/status").with(KITCHEN).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"status\":\"COLLECTED\"}")).andExpect(status().isBadRequest());
-        mvc.perform(post("/api/orders/" + ref + "/verify-pickup").with(STAFF).contentType(MediaType.APPLICATION_JSON).content(pickup))
-                .andExpect(status().isConflict());
+        pickup(ref, otp, STAFF).andExpect(status().isConflict()); // still PREPARING: not ready
         mvc.perform(get("/api/orders").param("status", "READY_FOR_PICKUP").with(STAFF)) // Staff page: not shown yet
                 .andExpect(jsonPath("$[*].orderReference", org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem(ref))));
 
@@ -145,40 +143,19 @@ class OrderApiTest {
         mvc.perform(get("/api/orders/" + ref).header("X-Pickup-Otp", otp)) // customer's open confirmation
                 .andExpect(jsonPath("$.status").value("READY_FOR_PICKUP"));
 
-        // not paid yet: a wrong OTP is rejected, the right one is accepted, and neither records a payment
-        String wrongOtp = otp.equals("000000") ? "111111" : "000000";
-        mvc.perform(post("/api/orders/" + ref + "/verify-pickup").with(STAFF).contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"otp\":\"" + wrongOtp + "\"}"))
-                .andExpect(status().isBadRequest());
-        mvc.perform(post("/api/orders/" + ref + "/verify-pickup").with(STAFF).contentType(MediaType.APPLICATION_JSON).content(pickup))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.paymentStatus").value("PENDING"));
-        mvc.perform(post("/api/orders/" + ref + "/collect").with(STAFF).contentType(MediaType.APPLICATION_JSON).content(pickup))
-                .andExpect(status().isConflict()); // no handover until the payment is recorded
+        // a wrong OTP is a 400 and changes nothing
+        pickup(ref, wrongOtp, STAFF).andExpect(status().isBadRequest());
+        var stillReady = orderRepository.findByOrderReference(ref).orElseThrow();
+        assertThat(stillReady.getStatus()).isEqualTo(OrderStatus.READY_FOR_PICKUP);
+        assertThat(stillReady.getCompletedAt()).isNull();
 
-        mvc.perform(post("/api/orders/" + ref + "/payments/counter-confirmation").with(STAFF))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.paymentType").value("CASH"))
-                .andExpect(jsonPath("$.paymentStatus").value("PAID"));
-        mvc.perform(post("/api/orders/" + ref + "/payments/counter-confirmation").with(STAFF))
-                .andExpect(status().isConflict()); // duplicate payment
-
-        mvc.perform(post("/api/orders/" + ref + "/verify-pickup").with(STAFF).contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"otp\":\"" + wrongOtp + "\"}"))
-                .andExpect(status().isBadRequest());
-        mvc.perform(post("/api/orders/" + ref + "/collect").with(STAFF).contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"otp\":\"" + wrongOtp + "\"}"))
-                .andExpect(status().isBadRequest()); // the handover step checks the OTP itself, too
-        mvc.perform(post("/api/orders/" + ref + "/verify-pickup").with(STAFF).contentType(MediaType.APPLICATION_JSON).content(pickup))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("READY_FOR_PICKUP")); // step 1 only checks
-        mvc.perform(post("/api/orders/" + ref + "/collect").with(STAFF).contentType(MediaType.APPLICATION_JSON).content(pickup))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("COLLECTED"));
-        mvc.perform(post("/api/orders/" + ref + "/collect").with(STAFF).contentType(MediaType.APPLICATION_JSON).content(pickup))
-                .andExpect(status().isConflict()); // collected only once
-        mvc.perform(post("/api/orders/" + ref + "/verify-pickup").with(STAFF).contentType(MediaType.APPLICATION_JSON).content(pickup))
-                .andExpect(status().isConflict());
+        // ONE call with the right OTP (no payment step): verified and collected together
+        pickup(ref, otp, STAFF).andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("COLLECTED"))
+                .andExpect(jsonPath("$.completedAt").exists());
+        assertThat(orderRepository.findByOrderReference(ref).orElseThrow().getCompletedAt()).isNotNull();
+        pickup(ref, otp, STAFF).andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("already collected")));
         mvc.perform(get("/api/orders").param("status", "READY_FOR_PICKUP").with(STAFF)) // collected orders leave the Staff page
                 .andExpect(jsonPath("$[*].orderReference", org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem(ref))));
         mvc.perform(get("/api/orders/" + ref).header("X-Pickup-Otp", otp)) // what the customer's open confirmation reads
@@ -188,26 +165,56 @@ class OrderApiTest {
     }
 
     @Test
-    void cancellingRestoresStock() throws Exception {
-        int before = stockOf(5);
+    void pickupOfAnUnknownOrderIsNotFound() throws Exception {
+        pickup("NQ-2026-NOPE0", "123456", STAFF).andExpect(status().isNotFound());
+    }
+
+    @Test
+    void theTwoStepPickupEndpointsNoLongerExist() throws Exception {
+        String[] order = placeOrder(1, 1);
+        for (String old : new String[]{"verify-pickup", "collect"}) {
+            mvc.perform(post("/api/orders/" + order[0] + "/" + old).with(STAFF).contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"otp\":\"" + order[1] + "\"}")).andExpect(status().isNotFound());
+        }
+    }
+
+    @Test
+    void twoStaffCollectingTheSameOrderAtOnceCollectItOnce() throws Exception {
+        String[] order = placeOrder(7, 1);
+        moveTo(order[0], "READY_FOR_PICKUP");
+        var statuses = inParallel(java.util.List.of(
+                () -> pickup(order[0], order[1], STAFF).andReturn().getResponse().getStatus(),
+                () -> pickup(order[0], order[1], STAFF).andReturn().getResponse().getStatus()));
+        assertThat(statuses).containsExactlyInAnyOrder(200, 409);
+        assertThat(orderRepository.findByOrderReference(order[0]).orElseThrow().getStatus()).isEqualTo(OrderStatus.COLLECTED);
+    }
+
+    @Test
+    void staffPageScriptMakesOnlyTheSinglePickupRequest() throws Exception {
+        String script = mvc.perform(get("/js/staff.js")).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        assertThat(script).contains("/pickup").doesNotContain("verify-pickup").doesNotContain("/collect")
+                .doesNotContain("Confirm handover").doesNotContain("data-verify").doesNotContain("Mark paid");
+    }
+
+    @Test
+    void cancellingAnOrderTakesItOutOfPopularity() throws Exception {
+        int before = popularityOf(5);
         String[] order = placeOrder(5, 2);
-        assertThat(stockOf(5)).isEqualTo(before - 2);
+        assertThat(popularityOf(5)).isEqualTo(before + 2);
 
         moveTo(order[0], "CANCELLED"); // cancelled (API) while still being prepared
-        assertThat(stockOf(5)).isEqualTo(before);
+        assertThat(popularityOf(5)).isEqualTo(before);
         assertThat(orderRepository.findByStatusNewestFirst(OrderStatus.CANCELLED)) // HQL query 2
                 .anyMatch(o -> o.getOrderReference().equals(order[0]));
 
-        // cancelling again must not restore the stock a second time
+        // cancelling again must not reverse the popularity a second time
         mvc.perform(patch("/api/orders/" + order[0] + "/status").with(KITCHEN).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"status\":\"CANCELLED\"}")).andExpect(status().isConflict());
-        assertThat(stockOf(5)).isEqualTo(before);
-        // a cancelled order can never be paid, made ready or collected
-        mvc.perform(post("/api/orders/" + order[0] + "/payments/counter-confirmation").with(STAFF)).andExpect(status().isConflict());
+        assertThat(popularityOf(5)).isEqualTo(before);
+        // a cancelled order can never be made ready or collected
         mvc.perform(patch("/api/orders/" + order[0] + "/status").with(KITCHEN).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"status\":\"READY_FOR_PICKUP\"}")).andExpect(status().isConflict());
-        mvc.perform(post("/api/orders/" + order[0] + "/collect").with(STAFF).contentType(MediaType.APPLICATION_JSON)
-                .content("{\"otp\":\"" + order[1] + "\"}")).andExpect(status().isConflict());
+        pickup(order[0], order[1], STAFF).andExpect(status().isConflict());
     }
 
     /** Runs the given requests at the same moment and returns their HTTP statuses. */
@@ -223,40 +230,21 @@ class OrderApiTest {
         return statuses;
     }
 
-    private int paymentRows(String ref) {
-        return tx.execute(t -> orderRepository.findByOrderReference(ref).orElseThrow().getPayments().size());
-    }
-
     @Test
-    void twoStaffMarkingTheSameCounterOrderPaidCreateOnePayment() throws Exception {
-        String[] order = placeOrder(7, 1);
-        var statuses = inParallel(java.util.List.of(
-                () -> mvc.perform(post("/api/orders/" + order[0] + "/payments/counter-confirmation").with(STAFF)).andReturn().getResponse().getStatus(),
-                () -> mvc.perform(post("/api/orders/" + order[0] + "/payments/counter-confirmation").with(STAFF)).andReturn().getResponse().getStatus()));
-        assertThat(statuses).containsExactlyInAnyOrder(200, 409);
-        assertThat(paymentRows(order[0])).isEqualTo(1);
-    }
-
-    @Test
-    void cancelRacingCounterPaymentNeverLeavesAnInconsistentOrder() throws Exception {
+    void cancelRacingReadyForPickupNeverLeavesAnInconsistentOrder() throws Exception {
         for (int round = 0; round < 5; round++) {
-            int stockBefore = stockOf(7);
+            int popularityBefore = popularityOf(7);
             String[] order = placeOrder(7, 1);
             var statuses = inParallel(java.util.List.of(
                     () -> mvc.perform(patch("/api/orders/" + order[0] + "/status").with(KITCHEN).contentType(MediaType.APPLICATION_JSON)
                             .content("{\"status\":\"CANCELLED\"}")).andReturn().getResponse().getStatus(),
-                    () -> mvc.perform(post("/api/orders/" + order[0] + "/payments/counter-confirmation").with(STAFF)).andReturn().getResponse().getStatus()));
-            assertThat(statuses).allMatch(code -> code == 200 || code == 409); // never a 500
+                    () -> mvc.perform(patch("/api/orders/" + order[0] + "/status").with(KITCHEN).contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"status\":\"READY_FOR_PICKUP\"}")).andReturn().getResponse().getStatus()));
+            assertThat(statuses).containsExactlyInAnyOrder(200, 409); // exactly one wins, never a 500
             var saved = orderRepository.findByOrderReference(order[0]).orElseThrow();
-            assertThat(saved.getStatus().name()).isIn("CANCELLED", "PREPARING");
-            if (saved.getStatus() == OrderStatus.CANCELLED) {
-                assertThat(stockOf(7)).as("stock restored exactly once").isEqualTo(stockBefore);
-                assertThat(saved.getPaymentStatus().name()).as("cancelled orders are never PAID").isIn("PENDING", "REFUNDED");
-            } else {
-                assertThat(stockOf(7)).isEqualTo(stockBefore - 1);
-                assertThat(saved.getPaymentStatus().name()).isEqualTo("PAID");
-            }
-            assertThat(paymentRows(order[0])).isEqualTo(saved.getPaymentStatus().name().equals("PENDING") ? 0 : 1);
+            assertThat(saved.getStatus()).isIn(OrderStatus.CANCELLED, OrderStatus.READY_FOR_PICKUP);
+            assertThat(popularityOf(7)).as("reversed only if cancelled")
+                    .isEqualTo(saved.getStatus() == OrderStatus.CANCELLED ? popularityBefore : popularityBefore + 1);
         }
     }
 
@@ -321,28 +309,30 @@ class OrderApiTest {
     }
 
     @Test
-    void trackingAndPaymentPagesAreGone() throws Exception {
+    void trackingPagesAreGone() throws Exception {
         mvc.perform(get("/")).andExpect(status().isOk())
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.content()
                         .string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("/track"))));
         mvc.perform(get("/track").with(STAFF)).andExpect(status().isNotFound());
-        mvc.perform(get("/pay/NQ-2026-AAAAA").with(STAFF)).andExpect(status().isNotFound());
         // the old customer tracking/cancel API is closed to the public
         mvc.perform(get("/api/orders/NQ-2026-AAAAA/status")).andExpect(status().isUnauthorized());
         mvc.perform(post("/api/orders/NQ-2026-AAAAA/cancel").header("X-Pickup-Otp", "123456")).andExpect(status().isUnauthorized());
     }
 
     @Test
-    void onlyCounterPaymentExists() throws Exception {
+    void noPaymentFunctionalityRemains() throws Exception {
         String[] order = placeOrder(4, 1);
+        // placing an order creates no payment data: the table and the order columns do not exist any more
+        assertThat(jdbc.queryForObject("select count(*) from information_schema.tables where table_name = 'payment'", Integer.class)).isZero();
+        assertThat(jdbc.queryForObject("select count(*) from information_schema.columns where table_name = 'customer_order' and column_name like 'payment%'", Integer.class)).isZero();
+        readAsCustomer(order[0], order[1]).andExpect(jsonPath("$.paymentStatus").doesNotExist());
+        // and no payment endpoint answers, for staff or anyone else
+        mvc.perform(post("/api/orders/" + order[0] + "/payments/counter-confirmation").with(STAFF)).andExpect(status().isNotFound());
         mvc.perform(post("/api/orders/" + order[0] + "/payments/mock-online").header("X-Pickup-Otp", order[1])
                 .contentType(MediaType.APPLICATION_JSON).content("{\"success\":true}")).andExpect(status().isUnauthorized());
-        assertThat(jdbc.queryForObject("select payment_method from customer_order where order_reference = ?", String.class, order[0]))
-                .isEqualTo("PAY_AT_COUNTER");
-        readAsCustomer(order[0], order[1]).andExpect(jsonPath("$.paymentStatus").value("PENDING"));
-        mvc.perform(get("/cart")).andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.content().string(
-                org.hamcrest.Matchers.allOf(org.hamcrest.Matchers.containsString("Pay at counter"),
-                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsStringIgnoringCase("online")))));
+        // the kitchen's/staff's pages carry no payment action
+        String script = mvc.perform(get("/js/staff.js")).andReturn().getResponse().getContentAsString();
+        assertThat(script).doesNotContainIgnoringCase("payment").doesNotContain("Mark paid");
     }
 
     @Test
@@ -350,16 +340,13 @@ class OrderApiTest {
         mvc.perform(get("/api/orders")).andExpect(status().isUnauthorized());
         mvc.perform(patch("/api/orders/NQ-2026-AAAAA/status").contentType(MediaType.APPLICATION_JSON).content("{\"status\":\"READY_FOR_PICKUP\"}"))
                 .andExpect(status().isUnauthorized());
-        mvc.perform(post("/api/orders/NQ-2026-AAAAA/verify-pickup").contentType(MediaType.APPLICATION_JSON).content("{\"otp\":\"123456\"}"))
+        mvc.perform(post("/api/orders/NQ-2026-AAAAA/pickup").contentType(MediaType.APPLICATION_JSON).content("{\"otp\":\"123456\"}"))
                 .andExpect(status().isUnauthorized());
         mvc.perform(get("/api/orders").with(STAFF)).andExpect(status().isOk());
-        mvc.perform(post("/api/orders/NQ-2026-AAAAA/collect").contentType(MediaType.APPLICATION_JSON).content("{\"otp\":\"123456\"}"))
-                .andExpect(status().isUnauthorized());
         // each login can only do its own job
         mvc.perform(patch("/api/orders/NQ-2026-AAAAA/status").with(STAFF).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"status\":\"READY_FOR_PICKUP\"}")).andExpect(status().isForbidden());
-        mvc.perform(post("/api/orders/NQ-2026-AAAAA/collect").with(KITCHEN).contentType(MediaType.APPLICATION_JSON)
-                .content("{\"otp\":\"123456\"}")).andExpect(status().isForbidden());
+        pickup("NQ-2026-AAAAA", "123456", KITCHEN).andExpect(status().isForbidden());
         mvc.perform(get("/staff").with(KITCHEN)).andExpect(status().is3xxRedirection());
         mvc.perform(get("/api/orders").param("status", "PREPARING").with(STAFF)) // Kitchen page list
                 .andExpect(status().isOk())
@@ -367,30 +354,22 @@ class OrderApiTest {
     }
 
     @Test
-    void concurrentCustomersCannotOversellTheLastItem() throws Exception {
-        long id = 21; // Gulab Jamun: only one left
-        jdbc.update("update menu_item set available_quantity = 1 where id = ?", id);
-        String order = "{\"items\":[{\"menuItemId\":" + id + ",\"quantity\":1}]}";
+    void availableItemCanBeOrderedRepeatedlyAndByManyCustomersAtOnce() throws Exception {
+        long id = 21; // Gulab Jamun
+        String order = "{\"items\":[{\"menuItemId\":" + id + ",\"quantity\":20}]}";
+        int popularityBefore = popularityOf(id);
 
-        // 6 customers press "Place order" at the same moment
-        var pool = java.util.concurrent.Executors.newFixedThreadPool(6);
-        var start = new java.util.concurrent.CountDownLatch(1);
-        var results = new java.util.ArrayList<java.util.concurrent.Future<Integer>>();
-        for (int i = 0; i < 6; i++) {
-            results.add(pool.submit(() -> {
-                start.await();
-                return mvc.perform(post("/api/orders").contentType(MediaType.APPLICATION_JSON).content(order))
-                        .andReturn().getResponse().getStatus();
-            }));
+        // there is no stock: the same dish can be ordered again and again, 20 at a time
+        for (int i = 0; i < 3; i++) {
+            mvc.perform(post("/api/orders").contentType(MediaType.APPLICATION_JSON).content(order)).andExpect(status().isCreated());
         }
-        start.countDown();
-        var statuses = new java.util.ArrayList<Integer>();
-        for (var f : results) statuses.add(f.get());
-        pool.shutdown();
+        // 6 customers press "Place order" for it at the same moment: all of them succeed, nobody waits or conflicts
+        var statuses = inParallel(java.util.Collections.nCopies(6, () ->
+                mvc.perform(post("/api/orders").contentType(MediaType.APPLICATION_JSON).content(order))
+                        .andReturn().getResponse().getStatus()));
 
-        assertThat(statuses).filteredOn(s -> s == 201).hasSize(1);   // exactly one winner
-        assertThat(statuses).filteredOn(s -> s == 409).hasSize(5);   // everyone else: sold out / changed concurrently
-        assertThat(stockOf(id)).isZero();                              // never negative
+        assertThat(statuses).containsOnly(201);
+        assertThat(popularityOf(id)).isEqualTo(popularityBefore + 9 * 20); // no lost updates
     }
 
     @Test

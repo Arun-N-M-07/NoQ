@@ -2,15 +2,13 @@ package com.noq.repository;
 
 import com.noq.entity.MenuItem;
 import com.noq.enums.Category;
-import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Limit;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
-import java.util.Optional;
 
 /**
  * Spring Data JPA writes the implementation of this interface at runtime.
@@ -19,10 +17,6 @@ import java.util.Optional;
  * not table and column names (menu_item, popularity_count). Hibernate translates them to SQL.
  */
 public interface MenuItemRepository extends JpaRepository<MenuItem, Long> {
-
-    /** SELECT ... FOR UPDATE: checkout locks the menu rows it is about to change, so buyers queue up instead of deadlocking. */
-    @Lock(LockModeType.PESSIMISTIC_WRITE)
-    Optional<MenuItem> findWithLockById(Long id);
 
     @Query("select m from MenuItem m where m.active = true order by m.id")
     List<MenuItem> findAllActive();
@@ -36,7 +30,18 @@ public interface MenuItemRepository extends JpaRepository<MenuItem, Long> {
      */
     @Query("""
             select m from MenuItem m
-            where m.active = true and m.available = true and m.availableQuantity > 0
+            where m.active = true and m.available = true
             order by m.popularityCount desc, m.id asc""")
     List<MenuItem> findPopularAvailable(Limit limit);
+
+    /**
+     * Adds delta (negative on cancellation, never below 0) to the popularity count in ONE atomic UPDATE,
+     * so customers ordering the same dish at the same time never block or conflict with each other.
+     */
+    @Modifying
+    @Query("""
+            update MenuItem m
+            set m.popularityCount = case when m.popularityCount + :delta < 0 then 0 else m.popularityCount + :delta end
+            where m.id = :id""")
+    void adjustPopularity(@Param("id") Long id, @Param("delta") int delta);
 }

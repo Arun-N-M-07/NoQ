@@ -13,7 +13,7 @@ import java.util.List;
 
 /**
  * JSON API for orders. Customers place an order and read it back with its pickup OTP; everything else is for STAFF
- * (see SecurityConfig). Staff record counter payments in {@link PaymentRestController}.
+ * (see SecurityConfig).
  */
 @RestController
 @RequestMapping("/api/orders")
@@ -57,15 +57,9 @@ public class OrderRestController {
         return orderService.updateStatus(orderReference, request.status());
     }
 
-    /** STAFF: {"otp": "123456"} - checks the OTP of a READY_FOR_PICKUP order; changes nothing. */
-    @PostMapping("/{orderReference}/verify-pickup")
-    public OrderResponse verifyPickup(@PathVariable String orderReference, @Valid @RequestBody PickupRequest request) {
-        return orderService.verifyPickup(orderReference, request.otp());
-    }
-
-    /** STAFF: {"otp": "123456"} - confirms the handover: checks the OTP again and saves COLLECTED, exactly once. */
-    @PostMapping("/{orderReference}/collect")
-    public OrderResponse collect(@PathVariable String orderReference, @Valid @RequestBody PickupRequest request) {
-        return orderService.collect(orderReference, request.otp());
+    /** STAFF: {"otp": "123456"} - the whole pickup in one call: checks the order is ready and the OTP is right, then saves COLLECTED, exactly once. */
+    @PostMapping("/{orderReference}/pickup")
+    public OrderResponse completePickup(@PathVariable String orderReference, @Valid @RequestBody PickupRequest request) {
+        return orderService.completePickup(orderReference, request.otp());
     }
 }

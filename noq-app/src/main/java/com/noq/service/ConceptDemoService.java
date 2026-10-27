@@ -50,20 +50,12 @@ public class ConceptDemoService {
                 List<String> topThree = session.createQuery(
                                 "select m.name from MenuItem m order by m.popularityCount desc, m.id asc", String.class)
                         .setMaxResults(3).getResultList();
-                // Inheritance mapping: type(p) reads the discriminator column and returns the Java subclass
-                List<Object[]> byType = session.createQuery(
-                        "select type(p), count(p) from Payment p group by type(p)", Object[].class).getResultList();
                 tx.commit();
 
-                Map<String, Long> paymentsByType = new LinkedHashMap<>();
-                for (Object[] row : byType) {
-                    paymentsByType.put(((Class<?>) row[0]).getSimpleName(), (Long) row[1]);
-                }
                 result.put("sessionOpen", session.isOpen());
                 result.put("transactionCommitted", true);
                 result.put("hqlActiveMenuItems", activeItems);
                 result.put("hqlTopThreeByPopularity", topThree);
-                result.put("hqlPaymentsBySubclass", paymentsByType);
             } catch (RuntimeException e) {
                 tx.rollback();
                 throw e;

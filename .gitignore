@@ -28,3 +28,4 @@ application-local.properties
 # OS / logs
 .DS_Store
 *.log
+.demo-logs/

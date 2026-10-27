@@ -9,7 +9,7 @@
 
   function cardData(card) {
     const d = card.dataset;
-    return { id: d.id, name: d.name, price: Number(d.price), image: d.image || null, emoji: d.emoji, max: Number(d.stock) };
+    return { id: d.id, name: d.name, price: Number(d.price), image: d.image || null, emoji: d.emoji };
   }
 
   function apply() {

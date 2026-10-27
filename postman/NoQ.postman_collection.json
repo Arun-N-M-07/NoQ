@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "NoQ - Smart Canteen API",
-    "description": "Run the folders top to bottom. Variables orderRef/otp are filled automatically by the 'Place order' requests. Payment is at the counter only.",
+    "description": "Run the folders top to bottom. Variables orderRef/otp are filled automatically by the 'Place order' requests. NoQ has no payment step: the customer pays by hand at the counter.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -391,10 +391,10 @@
       ]
     },
     {
-      "name": "3. Counter-payment order (full flow)",
+      "name": "3. Order flow (place -> ready -> OTP pickup)",
       "item": [
         {
-          "name": "Place counter order -> 201",
+          "name": "Place order -> 201",
           "request": {
             "method": "POST",
             "header": [
@@ -683,154 +683,6 @@
           ]
         },
         {
-          "name": "Staff: handover before payment -> 409",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/orders/{{orderRef}}/collect",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "orders",
-                "{{orderRef}}",
-                "collect"
-              ]
-            },
-            "description": "",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"otp\": \"{{otp}}\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "auth": {
-              "type": "basic",
-              "basic": [
-                {
-                  "key": "username",
-                  "value": "{{staffUser}}"
-                },
-                {
-                  "key": "password",
-                  "value": "{{staffPass}}"
-                }
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 409', () => pm.response.to.have.status(409));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "Staff: counter payment received",
-          "request": {
-            "method": "POST",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/orders/{{orderRef}}/payments/counter-confirmation",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "orders",
-                "{{orderRef}}",
-                "payments",
-                "counter-confirmation"
-              ]
-            },
-            "description": "",
-            "auth": {
-              "type": "basic",
-              "basic": [
-                {
-                  "key": "username",
-                  "value": "{{staffUser}}"
-                },
-                {
-                  "key": "password",
-                  "value": "{{staffPass}}"
-                }
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 200', () => pm.response.to.have.status(200));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "Staff: duplicate payment -> 409",
-          "request": {
-            "method": "POST",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/orders/{{orderRef}}/payments/counter-confirmation",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "orders",
-                "{{orderRef}}",
-                "payments",
-                "counter-confirmation"
-              ]
-            },
-            "description": "",
-            "auth": {
-              "type": "basic",
-              "basic": [
-                {
-                  "key": "username",
-                  "value": "{{staffUser}}"
-                },
-                {
-                  "key": "password",
-                  "value": "{{staffPass}}"
-                }
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 409', () => pm.response.to.have.status(409));"
-                ]
-              }
-            }
-          ]
-        },
-        {
           "name": "Staff: wrong OTP -> 400",
           "request": {
             "method": "POST",
@@ -841,7 +693,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/orders/{{orderRef}}/verify-pickup",
+              "raw": "{{baseUrl}}/api/orders/{{orderRef}}/pickup",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -849,7 +701,7 @@
                 "api",
                 "orders",
                 "{{orderRef}}",
-                "verify-pickup"
+                "pickup"
               ]
             },
             "description": "",
@@ -889,7 +741,7 @@
           ]
         },
         {
-          "name": "Staff: verify OTP -> 200 (still READY_FOR_PICKUP)",
+          "name": "Staff: pickup (OTP + handover in one call) -> COLLECTED",
           "request": {
             "method": "POST",
             "header": [
@@ -899,7 +751,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/orders/{{orderRef}}/verify-pickup",
+              "raw": "{{baseUrl}}/api/orders/{{orderRef}}/pickup",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -907,66 +759,7 @@
                 "api",
                 "orders",
                 "{{orderRef}}",
-                "verify-pickup"
-              ]
-            },
-            "description": "",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"otp\": \"{{otp}}\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "auth": {
-              "type": "basic",
-              "basic": [
-                {
-                  "key": "username",
-                  "value": "{{staffUser}}"
-                },
-                {
-                  "key": "password",
-                  "value": "{{staffPass}}"
-                }
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 200', () => pm.response.to.have.status(200));",
-                  "pm.test('only checked', () => pm.expect(pm.response.json().status).to.eql('READY_FOR_PICKUP'));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "Staff: confirm handover -> COLLECTED",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/orders/{{orderRef}}/collect",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "orders",
-                "{{orderRef}}",
-                "collect"
+                "pickup"
               ]
             },
             "description": "",
@@ -1007,7 +800,7 @@
           ]
         },
         {
-          "name": "Staff: second handover -> 409",
+          "name": "Staff: second pickup -> 409",
           "request": {
             "method": "POST",
             "header": [
@@ -1017,7 +810,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/orders/{{orderRef}}/collect",
+              "raw": "{{baseUrl}}/api/orders/{{orderRef}}/pickup",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -1025,7 +818,7 @@
                 "api",
                 "orders",
                 "{{orderRef}}",
-                "collect"
+                "pickup"
               ]
             },
             "description": "",
@@ -1109,7 +902,7 @@
       "name": "4. Errors & cancellation",
       "item": [
         {
-          "name": "Sold-out item -> 409",
+          "name": "Not-available item -> 409",
           "request": {
             "method": "POST",
             "header": [
@@ -1131,7 +924,7 @@
             "description": "",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"items\": [\n    {\n      \"menuItemId\": 16,\n      \"quantity\": 1\n    }\n  ]\n}",
+              "raw": "{\n  \"items\": [\n    {\n      \"menuItemId\": 22,\n      \"quantity\": 1\n    }\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1295,7 +1088,7 @@
           ]
         },
         {
-          "name": "Cancel an order still PREPARING (stock restored)",
+          "name": "Cancel an order still PREPARING",
           "request": {
             "method": "PATCH",
             "header": [

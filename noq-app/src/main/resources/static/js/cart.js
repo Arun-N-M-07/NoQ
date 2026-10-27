@@ -1,4 +1,4 @@
-/* Cart + checkout. Shows the cart, refreshes prices/stock from the server, POSTs the order, then shows the confirmation. */
+/* Cart + checkout. Shows the cart, refreshes prices/availability from the server, POSTs the order, then shows the confirmation. */
 (() => {
   const linesEl = document.querySelector('[data-cart-lines]');
   const errorEl = document.querySelector('[data-error]');
@@ -15,7 +15,6 @@
       const item = live[line.id];
       let problem = '';
       if (Object.keys(live).length && (!item || !item.orderable)) problem = 'No longer available - please remove';
-      else if (item && line.qty > item.availableQuantity) problem = `Only ${item.availableQuantity} left`;
       if (problem) problems++;
       return `<div class="cart-line ${problem ? 'problem' : ''}">
           <div class="thumb">${NoQ.thumb(line.image, line.emoji, line.name)}</div>
@@ -37,7 +36,7 @@
     placeBtn.disabled = lines.length === 0 || problems > 0;
   }
 
-  /** Update the stored cart with the CURRENT price and stock from the server. */
+  /** Update the stored cart with the CURRENT price and availability from the server. */
   async function refreshFromServer() {
     try {
       const menu = await NoQ.api('/api/menu');
@@ -45,7 +44,7 @@
       const items = NoQ.cart.all();
       Object.values(items).forEach(line => {
         const item = live[line.id];
-        if (item) Object.assign(line, { name: item.name, price: item.price, max: item.availableQuantity, image: item.imageUrl, emoji: item.categoryEmoji });
+        if (item) Object.assign(line, { name: item.name, price: item.price, max: 20, image: item.imageUrl, emoji: item.categoryEmoji });
       });
       NoQ.cart.save(items);
     } catch { /* offline: show cart as stored; the server will validate anyway */ }
@@ -120,9 +119,6 @@
     const statusPill = confirmation.querySelector('[data-order-status]');
     statusPill.textContent = `Status: ${order.status.replaceAll('_', ' ')}`; // PREPARING, READY FOR PICKUP, COLLECTED
     statusPill.className = 'pill ' + PILL[order.status];
-    const pill = confirmation.querySelector('[data-pay-status]');
-    pill.textContent = `Payment: ${order.paymentStatus}`;
-    pill.className = 'pill ' + (order.paymentStatus === 'PAID' ? 'pill-ok' : 'pill-warn');
     confirmation.querySelector('[data-items]').innerHTML = order.items.map(i =>
       `<li><span>${i.quantity} × ${esc(i.name)}</span><span>${NoQ.money(i.lineTotal)}</span></li>`).join('');
     confirmation.querySelector('[data-order-total]').textContent = NoQ.money(order.totalAmount);
@@ -139,7 +135,7 @@
     try {
       const latest = await NoQ.api(`/api/orders/${encodeURIComponent(order.orderReference)}`,
         { headers: { 'X-Pickup-Otp': order.pickupOtp } });
-      Object.assign(order, { status: latest.status, paymentStatus: latest.paymentStatus });
+      Object.assign(order, { status: latest.status });
       NoQ.lastOrder.save(order);
       showConfirmation(order);
       if (FINAL.includes(order.status)) clearInterval(poll);

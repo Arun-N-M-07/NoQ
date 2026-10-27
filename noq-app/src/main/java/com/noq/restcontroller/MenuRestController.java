@@ -37,7 +37,7 @@ public class MenuRestController {
         return menuService.getItem(id);
     }
 
-    /** KITCHEN: {"available": false} or {"available": true}. Stock is unchanged (it moves only with orders). */
+    /** KITCHEN: {"available": false} or {"available": true}. */
     @PatchMapping("/{id}/availability")
     public MenuItemResponse updateAvailability(@PathVariable Long id, @Valid @RequestBody AvailabilityRequest request) {
         return menuService.updateAvailability(id, request.available());

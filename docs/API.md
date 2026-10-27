@@ -5,7 +5,7 @@ Base URL `http://localhost:8080` · JSON in, JSON out · all responses below wer
 **Authentication**
 - Customers need no login. They place an order and read it back (the confirmation screen's live status), proving
   ownership with the header `X-Pickup-Otp: <6-digit code>` (headers don't end up in browser history or URL logs).
-  5 wrong codes lock that call for the order. Payment is always at the counter - there is no online payment API.
+  5 wrong codes lock that call for the order. NoQ has no payment API: the customer pays by hand at the counter.
 - Kitchen and Staff endpoints use the login session (browser) or **HTTP Basic** (Postman): `kitchen / kitchen123`
   (KITCHEN) and `staff / staff123` (STAFF). Each role can only call its own endpoints (403 otherwise).
 
@@ -19,7 +19,7 @@ Base URL `http://localhost:8080` · JSON in, JSON out · all responses below wer
 | 401 Unauthorized | Staff endpoint called without (valid) login |
 | 403 Forbidden | Logged in but wrong role, or wrong/missing customer OTP |
 | 404 Not Found | Order or menu item does not exist |
-| 409 Conflict | Business rule: sold out, not enough stock, illegal status change, already paid, already collected, duplicate submission, concurrent update |
+| 409 Conflict | Business rule: item not available, illegal status change, already collected, duplicate submission, concurrent update |
 | 503 Service Unavailable | Database error |
 
 **Error body** (always the same shape):
@@ -29,7 +29,7 @@ Base URL `http://localhost:8080` · JSON in, JSON out · all responses below wer
   "timestamp": "2026-10-20T00:17:36.601919",
   "status": 409,
   "error": "Conflict",
-  "message": "Only 15 x Tandoori Chicken (Half) left",
+  "message": "Garden Salad Bowl is not available right now",
   "path": "/api/orders",
   "fieldErrors": null
 }
@@ -44,14 +44,12 @@ Base URL `http://localhost:8080` · JSON in, JSON out · all responses below wer
 | GET | `/api/menu` | public | Active menu (cached). `?category=SNACKS` filters |
 | GET | `/api/menu/popular?limit=6` | public | Most popular orderable items (HQL query 1, cached) |
 | GET | `/api/menu/{id}` | public | One item |
-| PATCH | `/api/menu/{id}/availability` | KITCHEN | `{"available": true/false}` - the Kitchen page toggle. Menu items, prices and stock are not edited through the API (they come from `data.sql`; stock changes only with orders) |
+| PATCH | `/api/menu/{id}/availability` | KITCHEN | `{"available": true/false}` - the Kitchen page toggle. Menu items and prices are not edited through the API (they come from `data.sql`) |
 | POST | `/api/orders` | public | Place order → 201 with reference, OTP and item summary (the confirmation screen) |
 | GET | `/api/orders/{ref}` | OTP header or STAFF | Full order details incl. current status (never includes the OTP) - polled by the confirmation screen |
 | GET | `/api/orders` | KITCHEN / STAFF | `?status=PREPARING` (Kitchen page) or `?status=READY_FOR_PICKUP` (Staff page) uses HQL query 2; without a status: all open orders |
 | PATCH | `/api/orders/{ref}/status` | KITCHEN | `READY_FOR_PICKUP` (Kitchen button) or `CANCELLED` (only while PREPARING) |
-| POST | `/api/orders/{ref}/verify-pickup` | STAFF | Check the OTP only ("OTP verified. Food can be delivered.") |
-| POST | `/api/orders/{ref}/collect` | STAFF | Confirm handover: checks the OTP again, saves COLLECTED (once) |
-| POST | `/api/orders/{ref}/payments/counter-confirmation` | STAFF | Cash/UPI received at counter |
+| POST | `/api/orders/{ref}/pickup` | STAFF | Complete the pickup in ONE call: checks status and OTP, then saves COLLECTED (once) |
 | GET | `/api/demo/hibernate-session` | STAFF | SessionFactory → Session → Transaction demo |
 | GET | `/api/demo/spring-container` | STAFF | ApplicationContext / BeanFactory / proxy demo |
 | GET | `/actuator/health` | public | Health check |
@@ -77,7 +75,6 @@ Base URL `http://localhost:8080` · JSON in, JSON out · all responses below wer
     "categoryEmoji": "🥟",
     "price": 20.00,
     "imageUrl": "https://images.unsplash.com/photo-1601050690597-df0568f70950?w=600&h=400&fit=crop",
-    "availableQuantity": 58,
     "available": true,
     "active": true,
     "orderable": true,
@@ -100,7 +97,7 @@ A dish with `"available": false` stays on the menu (greyed out) and checkout rej
 
 ## Orders
 
-### Place an order (counter payment)
+### Place an order
 `POST /api/orders`
 
 ```json
@@ -120,9 +117,8 @@ A dish with `"available": false` stays on the menu (greyed out) and checkout rej
   "orderReference": "NQ-2026-DEBCE",
   "pickupOtp": "900932",
   "status": "PREPARING",
-  "paymentStatus": "PENDING",
   "totalAmount": 115.00,
-  "message": "Order placed! Pay ₹115.00 at the counter. Show your pickup code when collecting.",
+  "message": "Order placed! Show your pickup code at the counter when collecting.",
   "items": [
     { "name": "Masala Dosa", "unitPrice": 50.00, "quantity": 2, "lineTotal": 100.00 },
     { "name": "Masala Chai", "unitPrice": 15.00, "quantity": 1, "lineTotal": 15.00 }
@@ -132,7 +128,6 @@ A dish with `"available": false` stays on the menu (greyed out) and checkout rej
 
 > This is the **only** response that ever contains the plain OTP; the cart page shows it as the order confirmation.
 > Prices and totals come from the database; any `total`/`price` field sent by the client is ignored.
-> Every order is a pay-at-counter order (stored as `payment_method = 'PAY_AT_COUNTER'`); payment status starts as PENDING.
 
 ### Order errors
 
@@ -141,12 +136,11 @@ A dish with `"available": false` stays on the menu (greyed out) and checkout rej
 | `{"items":[{"menuItemId":1,"quantity":0}]}` | **400** `fieldErrors: {"items[0].quantity": "quantity must be at least 1"}` |
 | `{oops` | **400** `Malformed JSON request or invalid field value` |
 | item 9999 | **400** `Menu item 9999 does not exist` |
-| item 16 (stock 0) | **409** `Margherita Pizza is sold out` |
 | item 22 (marked not available) | **409** `Garden Salad Bowl is not available right now` |
 | item 23 (inactive) | **409** `Chilli Paneer is no longer on the menu` |
-| item 12 × 20 | **409** `Only 15 x Tandoori Chicken (Half) left` |
+| item 12 × 20, repeated any number of times | **201** each time (there is no stock limit; at most 20 per item per order) |
 | same `idempotencyKey` twice | **409** `This order was already submitted as NQ-2026-…` |
-| two buyers race for the last unit | one **201**, the other **409** "sold out" (menu rows are locked, so buyers queue up) |
+| many buyers order the same item at once | all **201** (no stock, so nothing to race for) |
 
 ### Order details (customer with OTP, or staff)
 `GET /api/orders/NQ-2026-DEBCE` with header `X-Pickup-Otp: 900932` (or a staff login). The customer's open
@@ -156,7 +150,6 @@ confirmation screen calls this every 5 s and shows `status` (`PREPARING` → `RE
 {
   "orderReference": "NQ-2026-DEBCE",
   "status": "PREPARING",
-  "paymentStatus": "PENDING",
   "subtotal": 115.00,
   "totalAmount": 115.00,
   "createdAt": "2026-10-20T00:17:36.395372",
@@ -188,42 +181,22 @@ Life cycle: `PREPARING → READY_FOR_PICKUP → COLLECTED`.
 
 Moving to **READY_FOR_PICKUP** also calls the notification microservice after the transaction commits.
 
-### Verify OTP, then confirm handover (STAFF)
-`POST /api/orders/NQ-2026-DEBCE/verify-pickup` `{"otp": "900932"}` → **200** order details, still `"status": "READY_FOR_PICKUP"`
-(the page shows "OTP verified. Food can be delivered.").
-`POST /api/orders/NQ-2026-DEBCE/collect` `{"otp": "900932"}` → **200** with `"status": "COLLECTED"` and `completedAt`.
-Both run the same checks (the payment check is in `collect` only - staff verify the OTP before taking the money):
+### Complete pickup (STAFF)
+`POST /api/orders/NQ-2026-DEBCE/pickup` `{"otp": "900932"}` → **200** with `"status": "COLLECTED"` and `completedAt`.
+There is no separate "verify OTP" call: this one request checks everything and collects the order, or changes nothing.
+The order row is locked (`SELECT ... FOR UPDATE`) first, so two staff cannot collect it twice. Any failed check leaves the order untouched:
 
-| Situation | Response |
+| Situation (checked in this order) | Response |
 |---|---|
-| order not READY_FOR_PICKUP | **409** `Order is not ready for pickup (status: PREPARING)` |
-| counter order not paid (`collect` only) | **409** `Payment pending: collect ₹115.00 at the counter first` |
+| unknown order | **404** `Order NQ-2026-… not found` |
+| already COLLECTED | **409** `Order already collected at 03:15 PM` |
+| not READY_FOR_PICKUP | **409** `Order is not ready for pickup (status: PREPARING)` |
 | wrong OTP | **400** `Invalid pickup OTP` |
-| `{"otp": "12"}` | **400** `fieldErrors.otp: otp must be exactly 6 digits` |
-| after COLLECTED | **409** `Order already collected at 12:20 am` |
+| `{"otp": "12"}` (rejected before the service runs) | **400** `fieldErrors.otp: otp must be exactly 6 digits` |
 
 ### Cancel (KITCHEN, API only)
-`PATCH /api/orders/{ref}/status` `{"status": "CANCELLED"}` while PREPARING → **200**; stock returns to the menu exactly once,
-and a PAID order becomes REFUNDED (the counter returns the money). Cancelling again → **409**.
-
----
-
-## Payments
-
-### Counter payment received (STAFF)
-`POST /api/orders/NQ-2026-DEBCE/payments/counter-confirmation` (no body)
-
-```json
-{
-  "orderReference": "NQ-2026-DEBCE",
-  "paymentType": "CASH",
-  "paymentStatus": "PAID",
-  "amount": 115.00,
-  "message": "Counter payment received"
-}
-```
-
-Again → **409** `Payment already received for this order`. On a cancelled order → **409** `Order is cancelled`.
+`PATCH /api/orders/{ref}/status` `{"status": "CANCELLED"}` while PREPARING → **200**; the dishes leave the popularity count exactly once,
+Cancelling again → **409**.
 
 ---
 
@@ -233,13 +206,12 @@ Again → **409** `Payment already received for this order`. On a cancelled orde
 
 ```json
 {
-  "entitiesMappedBySessionFactory": ["CashPayment", "CustomerOrder", "MenuItem", "OrderItem", "Payment", "StaffUser"],
+  "entitiesMappedBySessionFactory": ["CustomerOrder", "MenuItem", "OrderItem", "StaffUser"],
   "transactionActive": true,
   "sessionOpen": true,
   "transactionCommitted": true,
   "hqlActiveMenuItems": 22,
-  "hqlTopThreeByPopularity": ["Masala Dosa", "Samosa (2 pcs)", "Masala Chai"],
-  "hqlPaymentsBySubclass": { "CashPayment": 2 }
+  "hqlTopThreeByPopularity": ["Masala Dosa", "Samosa (2 pcs)", "Masala Chai"]
 }
 ```
 

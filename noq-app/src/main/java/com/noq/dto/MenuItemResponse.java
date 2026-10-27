@@ -18,7 +18,6 @@ public record MenuItemResponse(
         String categoryEmoji,
         BigDecimal price,
         String imageUrl,
-        int availableQuantity,
         boolean available,
         boolean active,
         boolean orderable,
@@ -27,6 +26,6 @@ public record MenuItemResponse(
     public static MenuItemResponse from(MenuItem m) {
         return new MenuItemResponse(m.getId(), m.getName(), m.getDescription(), m.getCategory(),
                 m.getCategory().getLabel(), m.getCategory().getEmoji(), m.getPrice(), m.getImageUrl(),
-                m.getAvailableQuantity(), m.isAvailable(), m.isActive(), m.isOrderable(), m.getPopularityCount());
+                m.isAvailable(), m.isActive(), m.isOrderable(), m.getPopularityCount());
     }
 }
